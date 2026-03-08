@@ -115,6 +115,23 @@ See the [`token_manager` example](examples/token_manager.rs) for a complete work
 | **Executions** | `get_executions` | `GET /v1/accounts/:id/executions` |
 | **Raw** | `get_text` | Any `GET /v1/*` endpoint |
 
+### Not yet implemented
+
+| Endpoint | Description | Notes |
+|---|---|---|
+| `POST /v1/markets/quotes/strategies` | Multi-leg strategy quotes (up to 4 legs) | Read-only (`read_md` scope). Useful for evaluating spreads, iron condors, etc. |
+| `POST /v1/accounts/:id/orders` | Place a new order | Requires `trade` scope (partner-only) |
+| `POST /v1/accounts/:id/orders/:orderId` | Replace/modify an existing order | Requires `trade` scope (partner-only) |
+| `DELETE /v1/accounts/:id/orders/:orderId` | Cancel an order | Requires `trade` scope (partner-only) |
+| `POST /v1/accounts/:id/orders/:orderId/impact` | Preview order impact (buying power, commission) | Requires `trade` scope (partner-only) |
+
+The order management endpoints require the `trade` OAuth scope, which Questrade restricts to approved partner developers.
+
+### Partial coverage notes
+
+- **`POST /v1/markets/quotes/options`** supports two modes: by explicit IDs (implemented) and by filters (`underlyingId` + `expiryDate` + optional strike range + option type). Only the ID-based mode is currently exposed.
+- **`GET /v1/symbols/search`** is wrapped by `resolve_symbol()` which returns only the first exact-match symbol ID. The raw search response (multiple partial matches) is not directly exposed as a public method.
+
 ### Automatic windowing
 
 The `get_activities` and `get_executions` methods automatically split date ranges longer than 30 days into compliant sub-windows (Questrade limits queries to 31-day windows). Results are combined and sorted chronologically.
