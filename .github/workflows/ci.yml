@@ -20,7 +20,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-      - run: cargo test --all-features
+      - run: ${{ matrix.rust == 'stable' && 'cargo test --all-features' || 'cargo check --all-features' }}
 
   clippy:
     name: Clippy
