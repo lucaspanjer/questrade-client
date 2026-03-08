@@ -38,5 +38,5 @@ pub mod client;
 pub mod error;
 
 pub use auth::{CachedToken, OnTokenRefresh, TokenManager, TokenResponse};
-pub use client::QuestradeClient;
+pub use client::{QuestradeClient, QuestradeClientBuilder};
 pub use error::{QuestradeError, Result};

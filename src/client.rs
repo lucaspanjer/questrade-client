@@ -33,6 +33,22 @@ fn backoff_delay(attempt: u32) -> Duration {
     Duration::from_millis(delay_ms)
 }
 
+/// Determine how long to wait before retrying a 429 response.
+///
+/// If the response contains a `Retry-After` header with a valid integer number
+/// of seconds, that value is used (capped at 60 s to avoid indefinite waits).
+/// Otherwise, falls back to [`backoff_delay`] for the given attempt number.
+fn retry_after_or_backoff(response: &reqwest::Response, attempt: u32) -> Duration {
+    if let Some(val) = response.headers().get(reqwest::header::RETRY_AFTER)
+        && let Ok(s) = val.to_str()
+        && let Ok(secs) = s.trim().parse::<u64>()
+    {
+        let capped = secs.min(60);
+        return Duration::from_secs(capped);
+    }
+    backoff_delay(attempt)
+}
+
 /// Format datetimes for Questrade query parameters using second precision in UTC.
 ///
 /// Some endpoints reject long fractional-second timestamps with:
@@ -56,30 +72,144 @@ fn format_query_datetime(dt: OffsetDateTime) -> Result<String> {
 /// methods for market data (quotes, option chains, candles) and account data
 /// (positions, balances, activities).
 ///
-/// Construct via [`QuestradeClient::new`] after obtaining a [`TokenManager`].
+/// Construct via [`QuestradeClient::new`] for defaults, or use
+/// [`QuestradeClientBuilder`] to supply a custom [`reqwest::Client`]
+/// (e.g. for custom TLS roots or proxy configuration):
+///
+/// ```no_run
+/// # use questrade_client::{QuestradeClientBuilder, TokenManager};
+/// # async fn example(tm: TokenManager) -> Result<(), Box<dyn std::error::Error>> {
+/// let custom_http = reqwest::Client::builder()
+///     .danger_accept_invalid_certs(true)
+///     .build()?;
+///
+/// let client = QuestradeClientBuilder::new()
+///     .token_manager(tm)
+///     .http_client(custom_http)
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct QuestradeClient {
     http: reqwest::Client,
     token_manager: TokenManager,
     log_raw_responses: bool,
 }
 
+/// Builder for [`QuestradeClient`] that allows injecting a custom
+/// [`reqwest::Client`] for TLS, proxy, or timeout configuration.
+///
+/// # Required
+///
+/// - [`token_manager`](Self::token_manager) — must be set before calling [`build`](Self::build).
+///
+/// # Optional
+///
+/// - [`http_client`](Self::http_client) — if omitted, a default client with
+///   30 s request timeout and 10 s connect timeout is created.
+///
+/// # Example
+///
+/// ```no_run
+/// # use questrade_client::{QuestradeClientBuilder, TokenManager};
+/// # async fn example(tm: TokenManager) -> Result<(), Box<dyn std::error::Error>> {
+/// let client = QuestradeClientBuilder::new()
+///     .token_manager(tm)
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
+pub struct QuestradeClientBuilder {
+    token_manager: Option<TokenManager>,
+    http_client: Option<reqwest::Client>,
+}
+
+impl QuestradeClientBuilder {
+    /// Create a new builder with all fields unset.
+    pub fn new() -> Self {
+        Self {
+            token_manager: None,
+            http_client: None,
+        }
+    }
+
+    /// Set the [`TokenManager`] used for OAuth token management (required).
+    pub fn token_manager(mut self, tm: TokenManager) -> Self {
+        self.token_manager = Some(tm);
+        self
+    }
+
+    /// Provide a pre-configured [`reqwest::Client`] for HTTP requests.
+    ///
+    /// Use this to customise TLS roots, proxy settings, timeouts, or any
+    /// other [`reqwest::ClientBuilder`] option. When omitted, a default
+    /// client is created with a 30 s overall timeout and a 10 s connect
+    /// timeout.
+    pub fn http_client(mut self, client: reqwest::Client) -> Self {
+        self.http_client = Some(client);
+        self
+    }
+
+    /// Consume the builder and create a [`QuestradeClient`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - [`token_manager`](Self::token_manager) was not set.
+    /// - No custom HTTP client was provided and building the default client
+    ///   fails (e.g. TLS initialisation error).
+    pub fn build(self) -> Result<QuestradeClient> {
+        let token_manager = self.token_manager.ok_or_else(|| {
+            QuestradeError::EmptyResponse(
+                "QuestradeClientBuilder: token_manager is required".to_string(),
+            )
+        })?;
+
+        let http = match self.http_client {
+            Some(client) => client,
+            None => reqwest::Client::builder()
+                .timeout(REQUEST_TIMEOUT)
+                .connect_timeout(CONNECT_TIMEOUT)
+                .build()?,
+        };
+
+        Ok(QuestradeClient {
+            http,
+            token_manager,
+            log_raw_responses: false,
+        })
+    }
+}
+
+impl Default for QuestradeClientBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QuestradeClient {
     /// Create a new client backed by the given [`TokenManager`].
+    ///
+    /// This is a convenience shorthand equivalent to:
+    ///
+    /// ```no_run
+    /// # use questrade_client::{QuestradeClientBuilder, TokenManager};
+    /// # fn example(token_manager: TokenManager) -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = QuestradeClientBuilder::new()
+    ///     .token_manager(token_manager)
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
     ///
     /// # Errors
     ///
     /// Returns an error if the underlying HTTP client cannot be built
     /// (e.g. TLS initialisation fails).
     pub fn new(token_manager: TokenManager) -> Result<Self> {
-        let http = reqwest::Client::builder()
-            .timeout(REQUEST_TIMEOUT)
-            .connect_timeout(CONNECT_TIMEOUT)
-            .build()?;
-        Ok(Self {
-            http,
-            token_manager,
-            log_raw_responses: false,
-        })
+        QuestradeClientBuilder::new()
+            .token_manager(token_manager)
+            .build()
     }
 
     /// Enable or disable raw response body logging at `trace!` level.
@@ -95,7 +225,8 @@ impl QuestradeClient {
 
     /// GET request with auth header. Retries once on 401 Unauthorized after
     /// forcing a token refresh. Retries up to `MAX_RETRIES` times on 429
-    /// responses using exponential backoff with ±20% jitter.
+    /// responses using exponential backoff with ±20% jitter (or `Retry-After`
+    /// header when present).
     async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
         let mut auth_retried = false;
         loop {
@@ -110,7 +241,7 @@ impl QuestradeClient {
 
                     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         if attempt < MAX_RETRIES {
-                            let delay = backoff_delay(attempt);
+                            let delay = retry_after_or_backoff(&resp, attempt);
                             warn!(attempt = attempt + 1, max_retries = MAX_RETRIES, delay = ?delay, "rate limited, retrying");
                             tokio::time::sleep(delay).await;
                             attempt += 1;
@@ -149,7 +280,9 @@ impl QuestradeClient {
     }
 
     /// POST request with auth header and JSON body. Retries once on 401
-    /// Unauthorized after forcing a token refresh.
+    /// Unauthorized after forcing a token refresh. Retries up to `MAX_RETRIES`
+    /// times on 429 responses using exponential backoff with ±20% jitter (or
+    /// `Retry-After` header when present).
     async fn post<T: serde::de::DeserializeOwned, B: serde::Serialize>(
         &self,
         path: &str,
@@ -161,13 +294,33 @@ impl QuestradeClient {
             let url = format!("{}v1{}", api_server, path);
             debug!(method = "POST", endpoint = %url, "HTTP request");
 
-            let resp = self
-                .http
-                .post(&url)
-                .bearer_auth(&token)
-                .json(body)
-                .send()
-                .await?;
+            let resp = {
+                let mut attempt = 0u32;
+                loop {
+                    let resp = self
+                        .http
+                        .post(&url)
+                        .bearer_auth(&token)
+                        .json(body)
+                        .send()
+                        .await?;
+
+                    if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                        if attempt < MAX_RETRIES {
+                            let delay = retry_after_or_backoff(&resp, attempt);
+                            warn!(attempt = attempt + 1, max_retries = MAX_RETRIES, delay = ?delay, "rate limited (POST), retrying");
+                            tokio::time::sleep(delay).await;
+                            attempt += 1;
+                            continue;
+                        }
+                        return Err(QuestradeError::RateLimited {
+                            retries: MAX_RETRIES,
+                        });
+                    }
+
+                    break resp;
+                }
+            };
 
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED && !auth_retried {
                 warn!("received 401 Unauthorized, forcing token refresh and retrying");
@@ -214,7 +367,7 @@ impl QuestradeClient {
 
                     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         if attempt < MAX_RETRIES {
-                            let delay = backoff_delay(attempt);
+                            let delay = retry_after_or_backoff(&resp, attempt);
                             warn!(attempt = attempt + 1, max_retries = MAX_RETRIES, delay = ?delay, "rate limited, retrying");
                             tokio::time::sleep(delay).await;
                             attempt += 1;
@@ -879,5 +1032,150 @@ mod tests {
         let client = QuestradeClient::new(tm).unwrap();
         let text = client.get_text("/time").await.unwrap();
         assert_eq!(text, expected_json);
+    }
+
+    // --- 429 retry tests ---
+
+    #[tokio::test]
+    async fn get_retries_on_429_then_succeeds() {
+        let server = MockServer::start().await;
+        let api_server = format!("{}/", server.uri());
+
+        Mock::given(method("GET"))
+            .and(path("/v1/time"))
+            .respond_with(ResponseTemplate::new(429))
+            .expect(2)
+            .up_to_n_times(2)
+            .named("rate limited")
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v1/time"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"time": "2026-03-02T12:00:00.000000-05:00"})),
+            )
+            .expect(1)
+            .named("success after rate limit")
+            .mount(&server)
+            .await;
+
+        let cached = CachedToken {
+            access_token: "token".to_string(),
+            api_server,
+            expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
+        };
+        let tm =
+            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(cached))
+                .await
+                .unwrap();
+
+        let client = QuestradeClient::new(tm).unwrap();
+        let time = client.get_server_time().await.unwrap();
+        assert_eq!(time.year(), 2026);
+    }
+
+    #[tokio::test]
+    async fn post_retries_on_429_then_succeeds() {
+        let server = MockServer::start().await;
+        let api_server = format!("{}/", server.uri());
+
+        Mock::given(method("POST"))
+            .and(path("/v1/markets/quotes/options"))
+            .respond_with(ResponseTemplate::new(429))
+            .expect(1)
+            .up_to_n_times(1)
+            .named("rate limited post")
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/v1/markets/quotes/options"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"optionQuotes": []})),
+            )
+            .expect(1)
+            .named("success post after rate limit")
+            .mount(&server)
+            .await;
+
+        let cached = CachedToken {
+            access_token: "token".to_string(),
+            api_server,
+            expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
+        };
+        let tm =
+            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(cached))
+                .await
+                .unwrap();
+
+        let client = QuestradeClient::new(tm).unwrap();
+        let quotes = client.get_option_quotes_raw(&[12345]).await.unwrap();
+        assert!(quotes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_fails_after_max_429_retries() {
+        let server = MockServer::start().await;
+        let api_server = format!("{}/", server.uri());
+
+        Mock::given(method("GET"))
+            .and(path("/v1/time"))
+            .respond_with(ResponseTemplate::new(429))
+            .expect((MAX_RETRIES + 1) as u64)
+            .mount(&server)
+            .await;
+
+        let cached = CachedToken {
+            access_token: "token".to_string(),
+            api_server,
+            expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
+        };
+        let tm =
+            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(cached))
+                .await
+                .unwrap();
+
+        let client = QuestradeClient::new(tm).unwrap();
+        let result = client.get_server_time().await;
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().to_string().contains("rate limit"),
+            "error should mention rate limit"
+        );
+    }
+
+    #[test]
+    fn retry_after_header_is_respected() {
+        let resp = http::Response::builder()
+            .status(429)
+            .header("Retry-After", "5")
+            .body("")
+            .unwrap();
+        let resp = reqwest::Response::from(resp);
+        let delay = retry_after_or_backoff(&resp, 0);
+        assert_eq!(delay, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn retry_after_header_capped_at_60s() {
+        let resp = http::Response::builder()
+            .status(429)
+            .header("Retry-After", "300")
+            .body("")
+            .unwrap();
+        let resp = reqwest::Response::from(resp);
+        let delay = retry_after_or_backoff(&resp, 0);
+        assert_eq!(delay, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn retry_after_missing_falls_back_to_backoff() {
+        let resp = http::Response::builder().status(429).body("").unwrap();
+        let resp = reqwest::Response::from(resp);
+        let delay = retry_after_or_backoff(&resp, 0);
+        let ms = delay.as_millis() as u64;
+        assert!(ms >= 800 && ms <= 1200, "expected ~1000ms, got {}ms", ms);
     }
 }

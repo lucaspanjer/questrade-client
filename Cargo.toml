@@ -20,6 +20,7 @@ rand = "0.8"
 
 [dev-dependencies]
 anyhow = "1.0"
+http = "1.0"
 wiremock = "0.6"
 clap = { version = "4.5", features = ["derive", "env"] }
 tokio = { version = "1.49", features = ["full"] }
