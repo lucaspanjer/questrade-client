@@ -79,7 +79,7 @@ impl TokenManager {
         Self::new_with_login_url(refresh_token, on_token_refresh, login_url, cached_token).await
     }
 
-    /// Like [`new`] but accepts an explicit login URL.
+    /// Like [`Self::new`] but accepts an explicit login URL.
     /// Used internally and in tests (e.g. to point at a wiremock server).
     pub async fn new_with_login_url(
         refresh_token: String,

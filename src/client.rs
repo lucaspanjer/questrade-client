@@ -350,7 +350,7 @@ impl QuestradeClient {
 
     /// GET request that returns the raw response body as a string.
     ///
-    /// Performs the same auth/retry dance as [`get()`](Self::get) but returns
+    /// Performs the same auth/retry dance as `get()` but returns
     /// the response body as-is without deserializing. Useful for inspecting
     /// raw API responses during development.
     pub async fn get_text(&self, path: &str) -> Result<String> {
