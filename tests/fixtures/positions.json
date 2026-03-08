@@ -1,0 +1,26 @@
+{
+    "positions": [
+        {
+            "symbol": "AAPL",
+            "symbolId": 8049,
+            "openQuantity": 100,
+            "currentMarketValue": 18240.00,
+            "currentPrice": 182.40,
+            "averageEntryPrice": 150.00,
+            "closedPnl": 0.00,
+            "openPnl": 3240.00,
+            "totalCost": 15000.00
+        },
+        {
+            "symbol": "AAPL 21MAR25 180 P",
+            "symbolId": 99001,
+            "openQuantity": -1,
+            "currentMarketValue": -350.00,
+            "currentPrice": 3.50,
+            "averageEntryPrice": 5.20,
+            "closedPnl": 0.00,
+            "openPnl": 170.00,
+            "totalCost": -520.00
+        }
+    ]
+}

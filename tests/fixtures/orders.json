@@ -1,0 +1,29 @@
+{
+    "orders": [
+        {
+            "id": 173577870,
+            "symbol": "AAPL",
+            "symbolId": 8049,
+            "totalQuantity": 100,
+            "openQuantity": 0,
+            "filledQuantity": 100,
+            "canceledQuantity": 0,
+            "side": "Buy",
+            "orderType": "Limit",
+            "limitPrice": 150.50,
+            "stopPrice": null,
+            "avgExecPrice": 150.25,
+            "lastExecPrice": 150.25,
+            "commissionCharged": 4.95,
+            "state": "Executed",
+            "timeInForce": "Day",
+            "creationTime": "2026-02-20T10:30:00.000000-05:00",
+            "updateTime": "2026-02-20T10:31:15.000000-05:00",
+            "notes": null,
+            "isAllOrNone": false,
+            "isAnonymous": false,
+            "orderGroupId": 0,
+            "chainId": 173577870
+        }
+    ]
+}

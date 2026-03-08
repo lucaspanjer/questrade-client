@@ -1,0 +1,15 @@
+{
+    "quotes": [
+        {
+            "symbol": "AAPL",
+            "symbolId": 8049,
+            "bidPrice": 182.30,
+            "askPrice": 182.45,
+            "lastTradePrice": 182.40,
+            "volume": 52345678,
+            "openPrice": 181.50,
+            "highPrice": 183.10,
+            "lowPrice": 180.90
+        }
+    ]
+}

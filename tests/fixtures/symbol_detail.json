@@ -1,0 +1,35 @@
+{
+    "symbols": [
+        {
+            "symbol": "AAPL",
+            "symbolId": 8049,
+            "description": "Apple Inc.",
+            "securityType": "Stock",
+            "listingExchange": "NASDAQ",
+            "currency": "USD",
+            "isTradable": true,
+            "isQuotable": true,
+            "hasOptions": true,
+            "prevDayClosePrice": 182.50,
+            "highPrice52": 199.62,
+            "lowPrice52": 124.17,
+            "averageVol3Months": 52000000,
+            "averageVol20Days": 50000000,
+            "outstandingShares": 15700000000,
+            "eps": 6.14,
+            "pe": 29.74,
+            "dividend": 0.96,
+            "yield": 0.53,
+            "exDate": "2025-11-10T00:00:00.000000-05:00",
+            "dividendDate": "2025-11-16T00:00:00.000000-05:00",
+            "marketCap": 2866625000000.0,
+            "industrySector": "Technology",
+            "industryGroup": "Technology Hardware, Storage & Peripherals",
+            "industrySubGroup": "Other",
+            "optionType": null,
+            "optionExpiry": null,
+            "optionStrikePrice": null,
+            "optionExerciseType": null
+        }
+    ]
+}

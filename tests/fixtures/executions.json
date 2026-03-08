@@ -1,0 +1,25 @@
+{
+    "executions": [
+        {
+            "symbol": "AAPL",
+            "symbolId": 8049,
+            "quantity": 100,
+            "side": "Buy",
+            "price": 150.25,
+            "id": 53817310,
+            "orderId": 173577870,
+            "orderChainId": 173577870,
+            "exchangeExecId": "XS1735778700147",
+            "timestamp": "2026-02-20T10:31:15.000000-05:00",
+            "notes": "",
+            "venue": "LAMP",
+            "totalCost": 15025.00,
+            "orderPlacementCommission": 0,
+            "commission": 4.95,
+            "executionFee": 0,
+            "secFee": 0,
+            "canadianExecutionFee": 0,
+            "parentId": 0
+        }
+    ]
+}

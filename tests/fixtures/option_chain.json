@@ -1,0 +1,57 @@
+{
+    "optionChain": [
+        {
+            "expiryDate": "2026-03-21T00:00:00.000000-05:00",
+            "description": "21 MAR 2026",
+            "listingExchange": "MX",
+            "optionExerciseType": "American",
+            "chainPerRoot": [
+                {
+                    "optionRoot": "AAPL",
+                    "multiplier": 100,
+                    "chainPerStrikePrice": [
+                        {
+                            "strikePrice": 175.00,
+                            "callSymbolId": 90001,
+                            "putSymbolId": 90002
+                        },
+                        {
+                            "strikePrice": 180.00,
+                            "callSymbolId": 90003,
+                            "putSymbolId": 90004
+                        },
+                        {
+                            "strikePrice": 185.00,
+                            "callSymbolId": 90005,
+                            "putSymbolId": 90006
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "expiryDate": "2026-04-17T00:00:00.000000-05:00",
+            "description": "17 APR 2026",
+            "listingExchange": "MX",
+            "optionExerciseType": "American",
+            "chainPerRoot": [
+                {
+                    "optionRoot": "AAPL",
+                    "multiplier": 100,
+                    "chainPerStrikePrice": [
+                        {
+                            "strikePrice": 175.00,
+                            "callSymbolId": 91001,
+                            "putSymbolId": 91002
+                        },
+                        {
+                            "strikePrice": 180.00,
+                            "callSymbolId": 91003,
+                            "putSymbolId": 91004
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

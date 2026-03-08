@@ -1,0 +1,18 @@
+{
+    "symbols": [
+        {
+            "symbol": "AAPL",
+            "symbolId": 8049,
+            "description": "Apple Inc.",
+            "securityType": "Stock",
+            "listingExchange": "NASDAQ"
+        },
+        {
+            "symbol": "AAPLD",
+            "symbolId": 12345,
+            "description": "Apple Inc. (Odd Lot)",
+            "securityType": "Stock",
+            "listingExchange": "NASDAQ"
+        }
+    ]
+}

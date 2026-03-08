@@ -1,0 +1,20 @@
+{
+    "activities": [
+        {
+            "tradeDate": "2026-02-20T00:00:00.000000-05:00",
+            "transactionDate": "2026-02-20T00:00:00.000000-05:00",
+            "settlementDate": "2026-02-22T00:00:00.000000-05:00",
+            "description": "BUY 100 AAPL @ 150.25",
+            "action": "Buy",
+            "symbol": "AAPL",
+            "symbolId": 8049,
+            "quantity": 100,
+            "price": 150.25,
+            "grossAmount": -15025.00,
+            "commission": -4.95,
+            "netAmount": -15029.95,
+            "currency": "USD",
+            "type": "Trades"
+        }
+    ]
+}

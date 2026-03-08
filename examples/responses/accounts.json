@@ -1,0 +1,29 @@
+{
+    "accounts": [
+        {
+            "type": "Margin",
+            "number": "12345678",
+            "status": "Active",
+            "isPrimary": false,
+            "isBilling": false,
+            "clientAccountType": "Individual"
+        },
+        {
+            "type": "TFSA",
+            "number": "23456789",
+            "status": "Active",
+            "isPrimary": true,
+            "isBilling": true,
+            "clientAccountType": "Individual"
+        },
+        {
+            "type": "RRSP",
+            "number": "34567890",
+            "status": "Active",
+            "isPrimary": false,
+            "isBilling": false,
+            "clientAccountType": "Individual"
+        }
+    ],
+    "userId": 100001
+}
