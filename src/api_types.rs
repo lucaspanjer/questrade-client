@@ -196,6 +196,80 @@ pub struct OptionQuote {
     pub ask_size: Option<u64>,
 }
 
+// ---------- Strategy quotes ----------
+
+/// A single leg in a multi-leg option strategy variant.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrategyLeg {
+    /// Option symbol ID for this leg.
+    pub symbol_id: u64,
+    /// Order side: `"Buy"` or `"Sell"`.
+    pub action: String,
+    /// Ratio of this leg in the strategy (e.g. 1 for a standard spread).
+    pub ratio: u32,
+}
+
+/// A strategy variant to quote, containing one or more legs.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrategyVariantRequest {
+    /// Caller-assigned ID, echoed in the response for matching.
+    pub variant_id: u32,
+    /// Strategy type (e.g. `"Custom"`).
+    pub strategy: String,
+    /// Legs comprising this strategy variant.
+    pub legs: Vec<StrategyLeg>,
+}
+
+/// Request body for `POST /v1/markets/quotes/strategies`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrategyQuoteRequest {
+    /// Strategy variants to fetch combined quotes for.
+    pub variants: Vec<StrategyVariantRequest>,
+}
+
+/// Response from `POST /v1/markets/quotes/strategies`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrategyQuotesResponse {
+    /// Combined quotes for each requested strategy variant.
+    pub strategy_quotes: Vec<StrategyQuote>,
+}
+
+/// Combined quote and Greeks for a multi-leg option strategy.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StrategyQuote {
+    /// Echoed variant ID from the request.
+    pub variant_id: u32,
+    /// Best bid price for the strategy; `None` if unavailable.
+    pub bid_price: Option<f64>,
+    /// Best ask price for the strategy; `None` if unavailable.
+    pub ask_price: Option<f64>,
+    /// Underlying ticker symbol.
+    pub underlying: String,
+    /// Questrade internal symbol ID of the underlying.
+    pub underlying_id: u64,
+    /// Session open price for the strategy.
+    pub open_price: Option<f64>,
+    /// Implied volatility as a decimal (e.g. `0.30` = 30%).
+    pub volatility: Option<f64>,
+    /// Delta Greek.
+    pub delta: Option<f64>,
+    /// Gamma Greek.
+    pub gamma: Option<f64>,
+    /// Theta Greek — daily time decay.
+    pub theta: Option<f64>,
+    /// Vega Greek — sensitivity to IV changes.
+    pub vega: Option<f64>,
+    /// Rho Greek — sensitivity to interest rate changes.
+    pub rho: Option<f64>,
+    /// Whether the quote data is real-time.
+    pub is_real_time: bool,
+}
+
 // ---------- Accounts ----------
 
 /// Response wrapper for `GET /v1/accounts`.
@@ -1011,5 +1085,82 @@ mod tests {
         assert_eq!(e.execution_fee, 0.0);
         assert_eq!(e.sec_fee, 0.0);
         assert_eq!(e.parent_id, 0);
+    }
+
+    #[test]
+    fn strategy_quotes_response_deserializes_from_questrade_json() {
+        let json = r#"{
+            "strategyQuotes": [
+                {
+                    "variantId": 1,
+                    "bidPrice": 27.2,
+                    "askPrice": 27.23,
+                    "underlying": "MSFT",
+                    "underlyingId": 9291,
+                    "openPrice": 27.0,
+                    "volatility": 0.30,
+                    "delta": 1.0,
+                    "gamma": 0.0,
+                    "theta": -0.05,
+                    "vega": 0.01,
+                    "rho": 0.002,
+                    "isRealTime": true
+                }
+            ]
+        }"#;
+
+        let resp: StrategyQuotesResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.strategy_quotes.len(), 1);
+
+        let q = &resp.strategy_quotes[0];
+        assert_eq!(q.variant_id, 1);
+        assert_eq!(q.bid_price, Some(27.2));
+        assert_eq!(q.ask_price, Some(27.23));
+        assert_eq!(q.underlying, "MSFT");
+        assert_eq!(q.underlying_id, 9291);
+        assert_eq!(q.open_price, Some(27.0));
+        assert_eq!(q.volatility, Some(0.30));
+        assert_eq!(q.delta, Some(1.0));
+        assert_eq!(q.gamma, Some(0.0));
+        assert_eq!(q.theta, Some(-0.05));
+        assert_eq!(q.vega, Some(0.01));
+        assert_eq!(q.rho, Some(0.002));
+        assert!(q.is_real_time);
+    }
+
+    #[test]
+    fn strategy_quote_request_serializes_to_questrade_json() {
+        let req = StrategyQuoteRequest {
+            variants: vec![StrategyVariantRequest {
+                variant_id: 1,
+                strategy: "Custom".to_string(),
+                legs: vec![
+                    StrategyLeg {
+                        symbol_id: 27426,
+                        action: "Buy".to_string(),
+                        ratio: 1000,
+                    },
+                    StrategyLeg {
+                        symbol_id: 10550014,
+                        action: "Sell".to_string(),
+                        ratio: 10,
+                    },
+                ],
+            }],
+        };
+
+        let json = serde_json::to_value(&req).unwrap();
+        let variants = json["variants"].as_array().unwrap();
+        assert_eq!(variants.len(), 1);
+        assert_eq!(variants[0]["variantId"], 1);
+        assert_eq!(variants[0]["strategy"], "Custom");
+        let legs = variants[0]["legs"].as_array().unwrap();
+        assert_eq!(legs.len(), 2);
+        assert_eq!(legs[0]["symbolId"], 27426);
+        assert_eq!(legs[0]["action"], "Buy");
+        assert_eq!(legs[0]["ratio"], 1000);
+        assert_eq!(legs[1]["symbolId"], 10550014);
+        assert_eq!(legs[1]["action"], "Sell");
+        assert_eq!(legs[1]["ratio"], 10);
     }
 }
