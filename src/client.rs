@@ -477,6 +477,23 @@ impl QuestradeClient {
         Ok(result)
     }
 
+    /// Fetch combined quotes for multi-leg option strategy variants.
+    ///
+    /// Posts the given variants to `POST /v1/markets/quotes/strategies` and
+    /// returns the strategy quotes. Each variant's `variant_id` is echoed in
+    /// the response for caller-side matching.
+    pub async fn get_strategy_quotes(
+        &self,
+        variants: &[StrategyVariantRequest],
+    ) -> Result<Vec<StrategyQuote>> {
+        let req = StrategyQuoteRequest {
+            variants: variants.to_vec(),
+        };
+        let resp: StrategyQuotesResponse =
+            self.post("/markets/quotes/strategies", &req).await?;
+        Ok(resp.strategy_quotes)
+    }
+
     /// Fetch historical candles for a symbol.
     pub async fn get_candles(
         &self,
