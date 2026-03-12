@@ -1,0 +1,19 @@
+{
+    "strategyQuotes": [
+        {
+            "variantId": 1,
+            "bidPrice": 27.2,
+            "askPrice": 27.23,
+            "underlying": "MSFT",
+            "underlyingId": 9291,
+            "openPrice": 27.0,
+            "volatility": 0.30,
+            "delta": 1.0,
+            "gamma": 0.0,
+            "theta": -0.05,
+            "vega": 0.01,
+            "rho": 0.002,
+            "isRealTime": true
+        }
+    ]
+}

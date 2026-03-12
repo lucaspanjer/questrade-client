@@ -450,6 +450,72 @@ async fn get_activities_returns_trade_activity() {
 }
 
 // ---------------------------------------------------------------------------
+// Strategy quotes (POST endpoint)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn get_strategy_quotes_returns_combined_quote() {
+    let server = MockServer::start().await;
+
+    let expected_body = serde_json::json!({
+        "variants": [{
+            "variantId": 1,
+            "strategy": "Custom",
+            "legs": [
+                { "symbolId": 27426, "action": "Buy", "ratio": 1000 },
+                { "symbolId": 10550014, "action": "Sell", "ratio": 10 }
+            ]
+        }]
+    });
+
+    Mock::given(method("POST"))
+        .and(path("/v1/markets/quotes/strategies"))
+        .and(header("Authorization", "Bearer test_token"))
+        .and(body_json(&expected_body))
+        .respond_with(ResponseTemplate::new(200).set_body_string(fixture("strategy_quotes.json")))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = mock_client(&server).await;
+
+    let variants = vec![questrade_client::api_types::StrategyVariantRequest {
+        variant_id: 1,
+        strategy: "Custom".to_string(),
+        legs: vec![
+            questrade_client::api_types::StrategyLeg {
+                symbol_id: 27426,
+                action: "Buy".to_string(),
+                ratio: 1000,
+            },
+            questrade_client::api_types::StrategyLeg {
+                symbol_id: 10550014,
+                action: "Sell".to_string(),
+                ratio: 10,
+            },
+        ],
+    }];
+
+    let quotes = client.get_strategy_quotes(&variants).await.unwrap();
+    assert_eq!(quotes.len(), 1);
+
+    let q = &quotes[0];
+    assert_eq!(q.variant_id, 1);
+    assert_eq!(q.bid_price, Some(27.2));
+    assert_eq!(q.ask_price, Some(27.23));
+    assert_eq!(q.underlying, "MSFT");
+    assert_eq!(q.underlying_id, 9291);
+    assert_eq!(q.open_price, Some(27.0));
+    assert_eq!(q.volatility, Some(0.30));
+    assert_eq!(q.delta, Some(1.0));
+    assert_eq!(q.gamma, Some(0.0));
+    assert_eq!(q.theta, Some(-0.05));
+    assert_eq!(q.vega, Some(0.01));
+    assert_eq!(q.rho, Some(0.002));
+    assert!(q.is_real_time);
+}
+
+// ---------------------------------------------------------------------------
 // Auth verification: requests include Bearer token
 // ---------------------------------------------------------------------------
 
