@@ -489,8 +489,7 @@ impl QuestradeClient {
         let req = StrategyQuoteRequest {
             variants: variants.to_vec(),
         };
-        let resp: StrategyQuotesResponse =
-            self.post("/markets/quotes/strategies", &req).await?;
+        let resp: StrategyQuotesResponse = self.post("/markets/quotes/strategies", &req).await?;
         Ok(resp.strategy_quotes)
     }
 
