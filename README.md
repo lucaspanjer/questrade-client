@@ -113,13 +113,13 @@ See the [`token_manager` example](examples/token_manager.rs) for a complete work
 | **Activities** | `get_activities` | `GET /v1/accounts/:id/activities` |
 | **Orders** | `get_orders` | `GET /v1/accounts/:id/orders` |
 | **Executions** | `get_executions` | `GET /v1/accounts/:id/executions` |
+| **Strategies** | `get_strategy_quotes` | `POST /v1/markets/quotes/strategies` |
 | **Raw** | `get_text` | Any `GET /v1/*` endpoint |
 
 ### Not yet implemented
 
 | Endpoint | Description | Notes |
 |---|---|---|
-| `POST /v1/markets/quotes/strategies` | Multi-leg strategy quotes (up to 4 legs) | Read-only (`read_md` scope). Useful for evaluating spreads, iron condors, etc. |
 | `POST /v1/accounts/:id/orders` | Place a new order | Requires `trade` scope (partner-only) |
 | `POST /v1/accounts/:id/orders/:orderId` | Replace/modify an existing order | Requires `trade` scope (partner-only) |
 | `DELETE /v1/accounts/:id/orders/:orderId` | Cancel an order | Requires `trade` scope (partner-only) |

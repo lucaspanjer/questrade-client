@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 license = "MIT"
 repository = "https://github.com/lucaspanjer/questrade-client"
-description = "Async Rust client for the Questrade REST API with automatic OAuth token management"
+description = "Async Rust client for the Questrade REST API"
 keywords = ["questrade", "trading", "api", "finance"]
 categories = ["api-bindings", "finance"]
 
