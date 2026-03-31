@@ -81,7 +81,10 @@ impl RateLimiter {
     /// until the window resets. Returns `None` if requests are still available,
     /// the reset time has already passed, or no state has been recorded yet.
     pub(crate) fn wait_duration(&self, category: RateLimitCategory) -> Option<Duration> {
-        let state = self.state_for(category).read().expect("rate limit lock poisoned");
+        let state = self
+            .state_for(category)
+            .read()
+            .expect("rate limit lock poisoned");
         if state.remaining != Some(0) {
             return None;
         }

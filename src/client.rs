@@ -265,7 +265,10 @@ impl QuestradeClient {
                                 warn!(attempt = attempt + 1, delay = ?delay, "rate limited without rate-limit headers, backing off");
                                 tokio::time::sleep(delay).await;
                             } else {
-                                warn!(attempt = attempt + 1, "rate limited, will wait based on rate-limit headers");
+                                warn!(
+                                    attempt = attempt + 1,
+                                    "rate limited, will wait based on rate-limit headers"
+                                );
                             }
                             attempt += 1;
                             continue;
@@ -304,7 +307,7 @@ impl QuestradeClient {
 
     /// POST request with auth header and JSON body.
     ///
-    /// Same rate-limit, auth-retry, and 429-retry behaviour as [`get`](Self::get).
+    /// Same rate-limit, auth-retry, and 429-retry behaviour as `get()`.
     async fn post<T: serde::de::DeserializeOwned, B: serde::Serialize>(
         &self,
         path: &str,
@@ -342,7 +345,10 @@ impl QuestradeClient {
                                 warn!(attempt = attempt + 1, delay = ?delay, "rate limited (POST) without rate-limit headers, backing off");
                                 tokio::time::sleep(delay).await;
                             } else {
-                                warn!(attempt = attempt + 1, "rate limited (POST), will wait based on rate-limit headers");
+                                warn!(
+                                    attempt = attempt + 1,
+                                    "rate limited (POST), will wait based on rate-limit headers"
+                                );
                             }
                             attempt += 1;
                             continue;
@@ -384,7 +390,7 @@ impl QuestradeClient {
 
     /// GET request that returns the raw response body as a string.
     ///
-    /// Same rate-limit, auth-retry, and 429-retry behaviour as [`get`](Self::get)
+    /// Same rate-limit, auth-retry, and 429-retry behaviour as `get()`
     /// but returns the response body as-is without deserializing. Useful for
     /// inspecting raw API responses during development.
     pub async fn get_text(&self, path: &str) -> Result<String> {
@@ -414,7 +420,10 @@ impl QuestradeClient {
                                 warn!(attempt = attempt + 1, delay = ?delay, "rate limited without rate-limit headers, backing off");
                                 tokio::time::sleep(delay).await;
                             } else {
-                                warn!(attempt = attempt + 1, "rate limited, will wait based on rate-limit headers");
+                                warn!(
+                                    attempt = attempt + 1,
+                                    "rate limited, will wait based on rate-limit headers"
+                                );
                             }
                             attempt += 1;
                             continue;
