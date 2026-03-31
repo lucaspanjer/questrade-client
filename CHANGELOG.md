@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-03-30
+
+### Added
+
+- Proactive rate limiting via `X-RateLimit-Remaining` and `X-RateLimit-Reset` response headers
+- Independent tracking of account and market data rate-limit budgets
+- Automatic request blocking when a category's budget is exhausted, resuming when the window resets
+- Integration tests for proactive rate limiting, 429 recovery with headers, and category independence
+
+### Changed
+
+- 429 retry now defers to header-based wait when rate-limit headers are present, falling back to exponential backoff only when headers are missing
+
 ## [0.1.2] - 2026-03-11
 
 ### Added
