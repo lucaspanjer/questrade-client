@@ -13,7 +13,8 @@ Handles OAuth token refresh, typed market-data access (quotes, option chains, ca
 - **Automatic OAuth token management** with single-use refresh token rotation
 - **Token caching** to skip OAuth round-trips on subsequent runs
 - **Transparent 401 retry** — forces a token refresh and retries once on Unauthorized
-- **Rate-limit retry** with exponential backoff and jitter on 429 responses
+- **Proactive rate limiting** — tracks `X-RateLimit-Remaining` / `X-RateLimit-Reset` headers and blocks requests until the window resets, with independent budgets for account and market data categories
+- **Rate-limit retry** with exponential backoff and jitter on 429 responses (fallback when headers are absent)
 - **Fully typed** request/response types with serde deserialization
 - **`tracing` instrumented** for structured logging at debug/trace levels
 - **Raw response logging** mode for API debugging
@@ -24,7 +25,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-questrade-client = "0.1"
+questrade-client = "0.2.1"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 ```
