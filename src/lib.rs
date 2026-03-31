@@ -36,6 +36,7 @@ pub mod api_types;
 pub mod auth;
 pub mod client;
 pub mod error;
+pub(crate) mod rate_limit;
 
 pub use auth::{CachedToken, OnTokenRefresh, TokenManager, TokenResponse};
 pub use client::{QuestradeClient, QuestradeClientBuilder};

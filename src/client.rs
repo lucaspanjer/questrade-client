@@ -6,11 +6,12 @@ use std::time::Duration;
 use rand::Rng;
 use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
-use tracing::{debug, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::api_types::*;
 use crate::auth::TokenManager;
 use crate::error::{QuestradeError, Result};
+use crate::rate_limit::RateLimiter;
 
 /// Overall request timeout (connect + read combined).
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -94,6 +95,7 @@ pub struct QuestradeClient {
     http: reqwest::Client,
     token_manager: TokenManager,
     log_raw_responses: bool,
+    rate_limiter: RateLimiter,
 }
 
 /// Builder for [`QuestradeClient`] that allows injecting a custom
@@ -177,6 +179,7 @@ impl QuestradeClientBuilder {
             http,
             token_manager,
             log_raw_responses: false,
+            rate_limiter: RateLimiter::new(),
         })
     }
 }
@@ -223,11 +226,17 @@ impl QuestradeClient {
         self
     }
 
-    /// GET request with auth header. Retries once on 401 Unauthorized after
-    /// forcing a token refresh. Retries up to `MAX_RETRIES` times on 429
-    /// responses using exponential backoff with ±20% jitter (or `Retry-After`
-    /// header when present).
+    /// GET request with auth header.
+    ///
+    /// Before sending, checks the proactive rate limiter and waits if the
+    /// category's budget is exhausted. After each response, updates the
+    /// rate-limit state from `X-RateLimit-*` headers. Retries once on 401
+    /// Unauthorized after forcing a token refresh. Retries up to `MAX_RETRIES`
+    /// times on 429 responses — the proactive wait handles the delay when
+    /// rate-limit headers are present, otherwise falls back to `Retry-After`
+    /// or exponential backoff.
     async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T> {
+        let category = RateLimiter::classify(path);
         let mut auth_retried = false;
         loop {
             let (token, api_server) = self.token_manager.get_token().await?;
@@ -237,13 +246,27 @@ impl QuestradeClient {
             let resp = {
                 let mut attempt = 0u32;
                 loop {
+                    if let Some(wait) = self.rate_limiter.wait_duration(category) {
+                        info!(category = %category, wait = ?wait, "proactive rate-limit wait");
+                        tokio::time::sleep(wait).await;
+                    }
+
                     let resp = self.http.get(&url).bearer_auth(&token).send().await?;
+                    self.rate_limiter
+                        .update_from_headers(category, resp.headers());
 
                     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         if attempt < MAX_RETRIES {
-                            let delay = retry_after_or_backoff(&resp, attempt);
-                            warn!(attempt = attempt + 1, max_retries = MAX_RETRIES, delay = ?delay, "rate limited, retrying");
-                            tokio::time::sleep(delay).await;
+                            // If the rate limiter learned a wait duration from headers,
+                            // the pre-check at the top of this loop handles the delay.
+                            // Otherwise, fall back to Retry-After / exponential backoff.
+                            if self.rate_limiter.wait_duration(category).is_none() {
+                                let delay = retry_after_or_backoff(&resp, attempt);
+                                warn!(attempt = attempt + 1, delay = ?delay, "rate limited without rate-limit headers, backing off");
+                                tokio::time::sleep(delay).await;
+                            } else {
+                                warn!(attempt = attempt + 1, "rate limited, will wait based on rate-limit headers");
+                            }
                             attempt += 1;
                             continue;
                         }
@@ -279,15 +302,15 @@ impl QuestradeClient {
         }
     }
 
-    /// POST request with auth header and JSON body. Retries once on 401
-    /// Unauthorized after forcing a token refresh. Retries up to `MAX_RETRIES`
-    /// times on 429 responses using exponential backoff with ±20% jitter (or
-    /// `Retry-After` header when present).
+    /// POST request with auth header and JSON body.
+    ///
+    /// Same rate-limit, auth-retry, and 429-retry behaviour as [`get`](Self::get).
     async fn post<T: serde::de::DeserializeOwned, B: serde::Serialize>(
         &self,
         path: &str,
         body: &B,
     ) -> Result<T> {
+        let category = RateLimiter::classify(path);
         let mut auth_retried = false;
         loop {
             let (token, api_server) = self.token_manager.get_token().await?;
@@ -297,6 +320,11 @@ impl QuestradeClient {
             let resp = {
                 let mut attempt = 0u32;
                 loop {
+                    if let Some(wait) = self.rate_limiter.wait_duration(category) {
+                        info!(category = %category, wait = ?wait, "proactive rate-limit wait");
+                        tokio::time::sleep(wait).await;
+                    }
+
                     let resp = self
                         .http
                         .post(&url)
@@ -304,12 +332,18 @@ impl QuestradeClient {
                         .json(body)
                         .send()
                         .await?;
+                    self.rate_limiter
+                        .update_from_headers(category, resp.headers());
 
                     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         if attempt < MAX_RETRIES {
-                            let delay = retry_after_or_backoff(&resp, attempt);
-                            warn!(attempt = attempt + 1, max_retries = MAX_RETRIES, delay = ?delay, "rate limited (POST), retrying");
-                            tokio::time::sleep(delay).await;
+                            if self.rate_limiter.wait_duration(category).is_none() {
+                                let delay = retry_after_or_backoff(&resp, attempt);
+                                warn!(attempt = attempt + 1, delay = ?delay, "rate limited (POST) without rate-limit headers, backing off");
+                                tokio::time::sleep(delay).await;
+                            } else {
+                                warn!(attempt = attempt + 1, "rate limited (POST), will wait based on rate-limit headers");
+                            }
                             attempt += 1;
                             continue;
                         }
@@ -350,10 +384,11 @@ impl QuestradeClient {
 
     /// GET request that returns the raw response body as a string.
     ///
-    /// Performs the same auth/retry dance as `get()` but returns
-    /// the response body as-is without deserializing. Useful for inspecting
-    /// raw API responses during development.
+    /// Same rate-limit, auth-retry, and 429-retry behaviour as [`get`](Self::get)
+    /// but returns the response body as-is without deserializing. Useful for
+    /// inspecting raw API responses during development.
     pub async fn get_text(&self, path: &str) -> Result<String> {
+        let category = RateLimiter::classify(path);
         let mut auth_retried = false;
         loop {
             let (token, api_server) = self.token_manager.get_token().await?;
@@ -363,13 +398,24 @@ impl QuestradeClient {
             let resp = {
                 let mut attempt = 0u32;
                 loop {
+                    if let Some(wait) = self.rate_limiter.wait_duration(category) {
+                        info!(category = %category, wait = ?wait, "proactive rate-limit wait");
+                        tokio::time::sleep(wait).await;
+                    }
+
                     let resp = self.http.get(&url).bearer_auth(&token).send().await?;
+                    self.rate_limiter
+                        .update_from_headers(category, resp.headers());
 
                     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         if attempt < MAX_RETRIES {
-                            let delay = retry_after_or_backoff(&resp, attempt);
-                            warn!(attempt = attempt + 1, max_retries = MAX_RETRIES, delay = ?delay, "rate limited, retrying");
-                            tokio::time::sleep(delay).await;
+                            if self.rate_limiter.wait_duration(category).is_none() {
+                                let delay = retry_after_or_backoff(&resp, attempt);
+                                warn!(attempt = attempt + 1, delay = ?delay, "rate limited without rate-limit headers, backing off");
+                                tokio::time::sleep(delay).await;
+                            } else {
+                                warn!(attempt = attempt + 1, "rate limited, will wait based on rate-limit headers");
+                            }
                             attempt += 1;
                             continue;
                         }

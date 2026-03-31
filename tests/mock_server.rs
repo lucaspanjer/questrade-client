@@ -589,3 +589,179 @@ async fn get_text_returns_raw_json_string() {
     let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(parsed["time"], "2026-03-03T16:48:34.140000-05:00");
 }
+
+// ---------------------------------------------------------------------------
+// Proactive rate limiting via X-RateLimit-* headers
+// ---------------------------------------------------------------------------
+
+/// When the server returns X-RateLimit-Remaining: 0 and a future reset time,
+/// the next request should be delayed until the reset window. We verify by
+/// checking that only one request hits the server before the "exhausted"
+/// response, and the second request arrives after the reset.
+#[tokio::test]
+async fn proactive_rate_limit_blocks_until_reset() {
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+    let server = MockServer::start().await;
+
+    // Reset 2 seconds from now.
+    let reset_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 2;
+
+    // First request: succeeds but signals remaining=0.
+    Mock::given(method("GET"))
+        .and(path("/v1/time"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(fixture("time.json"))
+                .insert_header("X-RateLimit-Remaining", "0")
+                .insert_header("X-RateLimit-Reset", &reset_epoch.to_string()),
+        )
+        .expect(1)
+        .up_to_n_times(1)
+        .named("exhausted response")
+        .mount(&server)
+        .await;
+
+    // Second request: after the reset, remaining is replenished.
+    Mock::given(method("GET"))
+        .and(path("/v1/time"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(fixture("time.json"))
+                .insert_header("X-RateLimit-Remaining", "30")
+                .insert_header("X-RateLimit-Reset", &(reset_epoch + 3600).to_string()),
+        )
+        .expect(1)
+        .named("replenished response")
+        .mount(&server)
+        .await;
+
+    let client = mock_client(&server).await;
+
+    // First call — gets the exhausted response, updates rate limiter state.
+    let _time1 = client.get_server_time().await.unwrap();
+
+    // Second call — should block until reset (~2 s).
+    let start = Instant::now();
+    let _time2 = client.get_server_time().await.unwrap();
+    let elapsed = start.elapsed();
+
+    // Should have waited at least 1.5 s (the 2 s reset minus timing slack).
+    assert!(
+        elapsed.as_millis() >= 1500,
+        "expected ≥1.5 s proactive wait, got {:?}",
+        elapsed,
+    );
+}
+
+/// When the server returns 429 WITH rate-limit headers, the client should use
+/// the header-based wait instead of the exponential backoff. The retry should
+/// succeed without explicit backoff sleep.
+#[tokio::test]
+async fn rate_limit_429_with_headers_uses_header_based_wait() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let server = MockServer::start().await;
+
+    // Reset 1 second from now — much shorter than the default 1 s backoff,
+    // and the test verifies we actually retry and succeed.
+    let reset_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 1;
+
+    // First request: 429 with rate-limit headers.
+    Mock::given(method("GET"))
+        .and(path("/v1/time"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("X-RateLimit-Remaining", "0")
+                .insert_header("X-RateLimit-Reset", &reset_epoch.to_string()),
+        )
+        .expect(1)
+        .up_to_n_times(1)
+        .named("429 with headers")
+        .mount(&server)
+        .await;
+
+    // Second request: succeeds.
+    Mock::given(method("GET"))
+        .and(path("/v1/time"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(fixture("time.json"))
+                .insert_header("X-RateLimit-Remaining", "29")
+                .insert_header("X-RateLimit-Reset", &(reset_epoch + 3600).to_string()),
+        )
+        .expect(1)
+        .named("success after 429")
+        .mount(&server)
+        .await;
+
+    let client = mock_client(&server).await;
+    let time = client.get_server_time().await.unwrap();
+    assert_eq!(time.year(), 2026);
+}
+
+/// Rate limits for different categories are tracked independently.
+/// Exhausting the account bucket should not block market data requests.
+#[tokio::test]
+async fn rate_limit_categories_are_independent() {
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+    let server = MockServer::start().await;
+
+    let reset_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 60; // far future — account category blocked for a long time
+
+    // Account endpoint: exhausts the account bucket.
+    Mock::given(method("GET"))
+        .and(path("/v1/time"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(fixture("time.json"))
+                .insert_header("X-RateLimit-Remaining", "0")
+                .insert_header("X-RateLimit-Reset", &reset_epoch.to_string()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    // Market data endpoint: unaffected, remaining is healthy.
+    Mock::given(method("GET"))
+        .and(path("/v1/markets"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(fixture("markets.json"))
+                .insert_header("X-RateLimit-Remaining", "19")
+                .insert_header("X-RateLimit-Reset", &reset_epoch.to_string()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = mock_client(&server).await;
+
+    // Exhaust the account bucket.
+    let _time = client.get_server_time().await.unwrap();
+
+    // Market data should still be fast (no proactive wait).
+    let start = Instant::now();
+    let markets = client.get_markets().await.unwrap();
+    let elapsed = start.elapsed();
+
+    assert!(!markets.is_empty());
+    assert!(
+        elapsed.as_millis() < 500,
+        "market data should not be blocked by account rate limit, took {:?}",
+        elapsed,
+    );
+}
