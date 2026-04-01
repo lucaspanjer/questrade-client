@@ -247,7 +247,7 @@ impl QuestradeClient {
                 let mut attempt = 0u32;
                 loop {
                     if let Some(wait) = self.rate_limiter.wait_duration(category) {
-                        info!(category = %category, wait = ?wait, "proactive rate-limit wait");
+                        info!(category = %category, wait = ?wait, reason = "header", "rate limited: X-RateLimit-Remaining=0, waiting for reset");
                         tokio::time::sleep(wait).await;
                     }
 
@@ -262,12 +262,12 @@ impl QuestradeClient {
                             // Otherwise, fall back to Retry-After / exponential backoff.
                             if self.rate_limiter.wait_duration(category).is_none() {
                                 let delay = retry_after_or_backoff(&resp, attempt);
-                                warn!(attempt = attempt + 1, delay = ?delay, "rate limited without rate-limit headers, backing off");
+                                warn!(attempt = attempt + 1, delay = ?delay, reason = "429", "rate limited: 429 response, no rate-limit headers, backing off");
                                 tokio::time::sleep(delay).await;
                             } else {
                                 warn!(
-                                    attempt = attempt + 1,
-                                    "rate limited, will wait based on rate-limit headers"
+                                    attempt = attempt + 1, reason = "429+header",
+                                    "rate limited: 429 response, will wait per X-RateLimit-Reset header"
                                 );
                             }
                             attempt += 1;
@@ -324,7 +324,7 @@ impl QuestradeClient {
                 let mut attempt = 0u32;
                 loop {
                     if let Some(wait) = self.rate_limiter.wait_duration(category) {
-                        info!(category = %category, wait = ?wait, "proactive rate-limit wait");
+                        info!(category = %category, wait = ?wait, reason = "header", "rate limited: X-RateLimit-Remaining=0, waiting for reset");
                         tokio::time::sleep(wait).await;
                     }
 
@@ -342,12 +342,12 @@ impl QuestradeClient {
                         if attempt < MAX_RETRIES {
                             if self.rate_limiter.wait_duration(category).is_none() {
                                 let delay = retry_after_or_backoff(&resp, attempt);
-                                warn!(attempt = attempt + 1, delay = ?delay, "rate limited (POST) without rate-limit headers, backing off");
+                                warn!(attempt = attempt + 1, delay = ?delay, reason = "429", "rate limited: 429 response (POST), no rate-limit headers, backing off");
                                 tokio::time::sleep(delay).await;
                             } else {
                                 warn!(
-                                    attempt = attempt + 1,
-                                    "rate limited (POST), will wait based on rate-limit headers"
+                                    attempt = attempt + 1, reason = "429+header",
+                                    "rate limited: 429 response (POST), will wait per X-RateLimit-Reset header"
                                 );
                             }
                             attempt += 1;
@@ -405,7 +405,7 @@ impl QuestradeClient {
                 let mut attempt = 0u32;
                 loop {
                     if let Some(wait) = self.rate_limiter.wait_duration(category) {
-                        info!(category = %category, wait = ?wait, "proactive rate-limit wait");
+                        info!(category = %category, wait = ?wait, reason = "header", "rate limited: X-RateLimit-Remaining=0, waiting for reset");
                         tokio::time::sleep(wait).await;
                     }
 
@@ -417,12 +417,12 @@ impl QuestradeClient {
                         if attempt < MAX_RETRIES {
                             if self.rate_limiter.wait_duration(category).is_none() {
                                 let delay = retry_after_or_backoff(&resp, attempt);
-                                warn!(attempt = attempt + 1, delay = ?delay, "rate limited without rate-limit headers, backing off");
+                                warn!(attempt = attempt + 1, delay = ?delay, reason = "429", "rate limited: 429 response, no rate-limit headers, backing off");
                                 tokio::time::sleep(delay).await;
                             } else {
                                 warn!(
-                                    attempt = attempt + 1,
-                                    "rate limited, will wait based on rate-limit headers"
+                                    attempt = attempt + 1, reason = "429+header",
+                                    "rate limited: 429 response, will wait per X-RateLimit-Reset header"
                                 );
                             }
                             attempt += 1;
