@@ -477,6 +477,23 @@ impl QuestradeClient {
             .ok_or_else(|| QuestradeError::EmptyResponse("No quote returned".to_string()))
     }
 
+    /// Fetch raw equity quotes for multiple symbol IDs in a single API call.
+    ///
+    /// Uses `GET /v1/markets/quotes/{ids}` with comma-separated IDs.
+    /// Returns quotes in arbitrary order; callers should match on `symbol_id`.
+    pub async fn get_raw_quotes(&self, symbol_ids: &[u64]) -> Result<Vec<Quote>> {
+        if symbol_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let ids = symbol_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let resp: QuoteResponse = self.get(&format!("/markets/quotes/{}", ids)).await?;
+        Ok(resp.quotes)
+    }
+
     /// Fetch the option chain structure (expiries + strikes + symbol IDs) for a symbol.
     pub async fn get_option_chain_structure(&self, symbol_id: u64) -> Result<OptionChainResponse> {
         self.get(&format!("/symbols/{}/options", symbol_id)).await
@@ -602,6 +619,23 @@ impl QuestradeClient {
         resp.symbols.into_iter().next().ok_or_else(|| {
             QuestradeError::EmptyResponse(format!("No symbol returned for id {}", symbol_id))
         })
+    }
+
+    /// Fetch full symbol details for multiple IDs in a single API call.
+    ///
+    /// Uses `GET /v1/symbols/{ids}` with comma-separated IDs.
+    /// Returns details in arbitrary order; callers should match on `symbol_id`.
+    pub async fn get_symbols(&self, symbol_ids: &[u64]) -> Result<Vec<SymbolDetail>> {
+        if symbol_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let ids = symbol_ids
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let resp: SymbolDetailResponse = self.get(&format!("/symbols/{}", ids)).await?;
+        Ok(resp.symbols)
     }
 
     /// Fetch account activities (executions, dividends, etc.) for a date range.
