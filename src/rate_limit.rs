@@ -137,9 +137,23 @@ impl RateLimiter {
         }
 
         if state.remaining == Some(0) {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before UNIX epoch")
+                .as_secs();
+            let wait_secs = state.reset_epoch.and_then(|r| r.checked_sub(now));
+            let reset_at = state.reset_epoch.map(|epoch| {
+                time::OffsetDateTime::from_unix_timestamp(epoch as i64)
+                    .map(|dt| {
+                        dt.format(&time::format_description::well_known::Rfc3339)
+                            .unwrap_or_else(|_| epoch.to_string())
+                    })
+                    .unwrap_or_else(|_| epoch.to_string())
+            });
             info!(
                 category = %category,
-                reset_epoch = state.reset_epoch,
+                reset_at = reset_at.as_deref(),
+                wait_secs,
                 "rate limit exhausted, will block requests until reset",
             );
         } else {

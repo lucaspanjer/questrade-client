@@ -6,7 +6,7 @@ use std::time::Duration;
 use rand::Rng;
 use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 use crate::api_types::*;
 use crate::auth::TokenManager;
@@ -247,7 +247,7 @@ impl QuestradeClient {
                 let mut attempt = 0u32;
                 loop {
                     if let Some(wait) = self.rate_limiter.wait_duration(category) {
-                        info!(category = %category, wait = ?wait, reason = "header", "rate limited: X-RateLimit-Remaining=0, waiting for reset");
+                        debug!(category = %category, wait = ?wait, "sleeping until rate-limit window resets");
                         tokio::time::sleep(wait).await;
                     }
 
@@ -264,11 +264,6 @@ impl QuestradeClient {
                                 let delay = retry_after_or_backoff(&resp, attempt);
                                 warn!(attempt = attempt + 1, delay = ?delay, reason = "429", "rate limited: 429 response, no rate-limit headers, backing off");
                                 tokio::time::sleep(delay).await;
-                            } else {
-                                warn!(
-                                    attempt = attempt + 1, reason = "429+header",
-                                    "rate limited: 429 response, will wait per X-RateLimit-Reset header"
-                                );
                             }
                             attempt += 1;
                             continue;
@@ -324,7 +319,7 @@ impl QuestradeClient {
                 let mut attempt = 0u32;
                 loop {
                     if let Some(wait) = self.rate_limiter.wait_duration(category) {
-                        info!(category = %category, wait = ?wait, reason = "header", "rate limited: X-RateLimit-Remaining=0, waiting for reset");
+                        debug!(category = %category, wait = ?wait, "sleeping until rate-limit window resets");
                         tokio::time::sleep(wait).await;
                     }
 
@@ -344,11 +339,6 @@ impl QuestradeClient {
                                 let delay = retry_after_or_backoff(&resp, attempt);
                                 warn!(attempt = attempt + 1, delay = ?delay, reason = "429", "rate limited: 429 response (POST), no rate-limit headers, backing off");
                                 tokio::time::sleep(delay).await;
-                            } else {
-                                warn!(
-                                    attempt = attempt + 1, reason = "429+header",
-                                    "rate limited: 429 response (POST), will wait per X-RateLimit-Reset header"
-                                );
                             }
                             attempt += 1;
                             continue;
@@ -405,7 +395,7 @@ impl QuestradeClient {
                 let mut attempt = 0u32;
                 loop {
                     if let Some(wait) = self.rate_limiter.wait_duration(category) {
-                        info!(category = %category, wait = ?wait, reason = "header", "rate limited: X-RateLimit-Remaining=0, waiting for reset");
+                        debug!(category = %category, wait = ?wait, "sleeping until rate-limit window resets");
                         tokio::time::sleep(wait).await;
                     }
 
@@ -419,11 +409,6 @@ impl QuestradeClient {
                                 let delay = retry_after_or_backoff(&resp, attempt);
                                 warn!(attempt = attempt + 1, delay = ?delay, reason = "429", "rate limited: 429 response, no rate-limit headers, backing off");
                                 tokio::time::sleep(delay).await;
-                            } else {
-                                warn!(
-                                    attempt = attempt + 1, reason = "429+header",
-                                    "rate limited: 429 response, will wait per X-RateLimit-Reset header"
-                                );
                             }
                             attempt += 1;
                             continue;
