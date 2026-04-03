@@ -159,7 +159,7 @@ impl RateLimiter {
         } else {
             debug!(
                 category = %category,
-                remaining = ?state.remaining,
+                remaining,
                 "rate limit state updated",
             );
         }
