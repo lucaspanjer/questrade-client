@@ -137,6 +137,18 @@ The order management endpoints require the `trade` OAuth scope, which Questrade 
 
 The `get_activities` and `get_executions` methods automatically split date ranges longer than 30 days into compliant sub-windows (Questrade limits queries to 31-day windows). Results are combined and sorted chronologically.
 
+## API variances from Questrade docs
+
+A few behaviours differ from the [official documentation](https://www.questrade.com/api/documentation):
+
+- **Batch endpoints use query params, not path params.** The docs show `GET /v1/markets/quotes/:id` and `GET /v1/symbols/:id` for single IDs. For multiple IDs, the working form is `?ids=1,2,3` (e.g. `/v1/markets/quotes?ids=123,456`). Putting comma-separated IDs in the path returns HTTP 400.
+- **`/symbols` is rate-limited under the account bucket, not market data.** The docs list `/symbols` under the 20 req/s / 15k req/hr market data category, but `X-RateLimit-Remaining` headers empirically return account-bucket values (~30k ceiling) for `/symbols` calls and market-data values (~15k ceiling) for `/markets` calls.
+- **Rate limit headers only track the per-hour quota.** The docs specify both per-second (20–30 req/s) and per-hour (15k–30k req/hr) limits, but `X-RateLimit-Remaining` / `X-RateLimit-Reset` reflect only the hourly counter. The per-second limit is not surfaced in headers — you only learn about it from a 429 response. This means the proactive rate limiter only prevents hourly exhaustion; per-second bursts rely on the reactive 429 retry + backoff fallback.
+
+### Future: per-second rate limiting
+
+The current implementation has no per-second throttling. Under bursty workloads (e.g. a batch snapshot triggering 36 sequential fallback fetches), we can easily exceed 20 req/s for market data. To fix this, we should add a client-side token bucket or sliding window limiter (one per category) that caps outgoing requests to the documented per-second limits. This would sit alongside the existing hourly header-based limiter and fire before each request, independent of the 429 retry path.
+
 ## Examples
 
 - **[`dump_responses`](examples/dump_responses.rs)** — dump raw API JSON to stdout for debugging
