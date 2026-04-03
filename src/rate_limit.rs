@@ -61,12 +61,16 @@ impl RateLimiter {
     }
 
     /// Classify an API path into a rate-limit category.
+    ///
+    /// Questrade docs list `/symbols` under market data, but empirically the
+    /// API returns account-bucket remaining values (~30k) for `/symbols` calls
+    /// and market-data-bucket values (~15k) for `/markets` calls.
     pub(crate) fn classify(path: &str) -> RateLimitCategory {
-        if path.starts_with("/time") || path.starts_with("/accounts") {
-            RateLimitCategory::Account
-        } else {
-            // /symbols, /markets, and anything else → market data
+        if path.starts_with("/markets") {
             RateLimitCategory::MarketData
+        } else {
+            // /time, /accounts, /symbols, and anything else → account
+            RateLimitCategory::Account
         }
     }
 
@@ -193,22 +197,24 @@ mod tests {
             RateLimiter::classify("/accounts/123/activities"),
             RateLimitCategory::Account,
         );
+        // Docs list /symbols under market data, but empirically Questrade
+        // returns account-bucket remaining values (~30k) for /symbols calls.
+        assert_eq!(
+            RateLimiter::classify("/symbols/search?prefix=AAPL"),
+            RateLimitCategory::Account,
+        );
+        assert_eq!(
+            RateLimiter::classify("/symbols/12345"),
+            RateLimitCategory::Account,
+        );
+        assert_eq!(
+            RateLimiter::classify("/symbols/12345/options"),
+            RateLimitCategory::Account,
+        );
     }
 
     #[test]
     fn classify_market_data_endpoints() {
-        assert_eq!(
-            RateLimiter::classify("/symbols/search?prefix=AAPL"),
-            RateLimitCategory::MarketData,
-        );
-        assert_eq!(
-            RateLimiter::classify("/symbols/12345"),
-            RateLimitCategory::MarketData,
-        );
-        assert_eq!(
-            RateLimiter::classify("/symbols/12345/options"),
-            RateLimitCategory::MarketData,
-        );
         assert_eq!(
             RateLimiter::classify("/markets/quotes/12345"),
             RateLimitCategory::MarketData,
