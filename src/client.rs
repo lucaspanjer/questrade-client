@@ -479,7 +479,7 @@ impl QuestradeClient {
 
     /// Fetch raw equity quotes for multiple symbol IDs in a single API call.
     ///
-    /// Uses `GET /v1/markets/quotes/{ids}` with comma-separated IDs.
+    /// Uses `GET /v1/markets/quotes?ids=...` with comma-separated IDs.
     /// Returns quotes in arbitrary order; callers should match on `symbol_id`.
     pub async fn get_raw_quotes(&self, symbol_ids: &[u64]) -> Result<Vec<Quote>> {
         if symbol_ids.is_empty() {
@@ -490,7 +490,7 @@ impl QuestradeClient {
             .map(|id| id.to_string())
             .collect::<Vec<_>>()
             .join(",");
-        let resp: QuoteResponse = self.get(&format!("/markets/quotes/{}", ids)).await?;
+        let resp: QuoteResponse = self.get(&format!("/markets/quotes?ids={}", ids)).await?;
         Ok(resp.quotes)
     }
 
@@ -623,7 +623,7 @@ impl QuestradeClient {
 
     /// Fetch full symbol details for multiple IDs in a single API call.
     ///
-    /// Uses `GET /v1/symbols/{ids}` with comma-separated IDs.
+    /// Uses `GET /v1/symbols?ids=...` with comma-separated IDs.
     /// Returns details in arbitrary order; callers should match on `symbol_id`.
     pub async fn get_symbols(&self, symbol_ids: &[u64]) -> Result<Vec<SymbolDetail>> {
         if symbol_ids.is_empty() {
@@ -634,7 +634,7 @@ impl QuestradeClient {
             .map(|id| id.to_string())
             .collect::<Vec<_>>()
             .join(",");
-        let resp: SymbolDetailResponse = self.get(&format!("/symbols/{}", ids)).await?;
+        let resp: SymbolDetailResponse = self.get(&format!("/symbols?ids={}", ids)).await?;
         Ok(resp.symbols)
     }
 
