@@ -558,18 +558,8 @@ impl QuestradeClient {
         end: OffsetDateTime,
         interval: &str,
     ) -> Result<Vec<Candle>> {
-        let start_str = start
-            .format(&Iso8601::DEFAULT)
-            .map_err(|e| QuestradeError::DateTime {
-                context: "Failed to format start time".to_string(),
-                source: Box::new(e),
-            })?;
-        let end_str = end
-            .format(&Iso8601::DEFAULT)
-            .map_err(|e| QuestradeError::DateTime {
-                context: "Failed to format end time".to_string(),
-                source: Box::new(e),
-            })?;
+        let start_str = format_query_datetime(start)?;
+        let end_str = format_query_datetime(end)?;
         let resp: CandleResponse = self
             .get(&format!(
                 "/markets/candles/{}?startTime={}&endTime={}&interval={}",
