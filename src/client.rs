@@ -6,7 +6,7 @@ use std::time::Duration;
 use rand::Rng;
 use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
-use tracing::{debug, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 use crate::api_types::*;
 use crate::auth::TokenManager;
@@ -251,9 +251,17 @@ impl QuestradeClient {
                         tokio::time::sleep(wait).await;
                     }
 
-                    let resp = self.http.get(&url).bearer_auth(&token).send().await?;
+                    let resp = match self.http.get(&url).bearer_auth(&token).send().await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!(method = "GET", endpoint = %url, err = %e, "HTTP send failed");
+                            return Err(e.into());
+                        }
+                    };
                     self.rate_limiter
                         .update_from_headers(category, resp.headers());
+
+                    debug!(method = "GET", endpoint = %url, status = %resp.status(), "HTTP response");
 
                     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         if attempt < MAX_RETRIES {
@@ -287,6 +295,7 @@ impl QuestradeClient {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
+                error!(method = "GET", endpoint = %url, status = %status, body = %body, "HTTP error response");
                 return Err(QuestradeError::Api { status, body });
             }
 
@@ -323,15 +332,24 @@ impl QuestradeClient {
                         tokio::time::sleep(wait).await;
                     }
 
-                    let resp = self
+                    let resp = match self
                         .http
                         .post(&url)
                         .bearer_auth(&token)
                         .json(body)
                         .send()
-                        .await?;
+                        .await
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!(method = "POST", endpoint = %url, err = %e, "HTTP send failed");
+                            return Err(e.into());
+                        }
+                    };
                     self.rate_limiter
                         .update_from_headers(category, resp.headers());
+
+                    debug!(method = "POST", endpoint = %url, status = %resp.status(), "HTTP response");
 
                     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         if attempt < MAX_RETRIES {
@@ -362,6 +380,7 @@ impl QuestradeClient {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body_text = resp.text().await.unwrap_or_default();
+                error!(method = "POST", endpoint = %url, status = %status, body = %body_text, "HTTP error response");
                 return Err(QuestradeError::Api {
                     status,
                     body: body_text,
@@ -399,9 +418,17 @@ impl QuestradeClient {
                         tokio::time::sleep(wait).await;
                     }
 
-                    let resp = self.http.get(&url).bearer_auth(&token).send().await?;
+                    let resp = match self.http.get(&url).bearer_auth(&token).send().await {
+                        Ok(r) => r,
+                        Err(e) => {
+                            error!(method = "GET", endpoint = %url, err = %e, "HTTP send failed (text)");
+                            return Err(e.into());
+                        }
+                    };
                     self.rate_limiter
                         .update_from_headers(category, resp.headers());
+
+                    debug!(method = "GET", endpoint = %url, status = %resp.status(), "HTTP response (text)");
 
                     if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
                         if attempt < MAX_RETRIES {
@@ -432,6 +459,7 @@ impl QuestradeClient {
             if !resp.status().is_success() {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
+                error!(method = "GET", endpoint = %url, status = %status, body = %body, "HTTP error response (text)");
                 return Err(QuestradeError::Api { status, body });
             }
 
