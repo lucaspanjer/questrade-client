@@ -56,11 +56,13 @@ fn retry_after_or_backoff(response: &reqwest::Response, attempt: u32) -> Duratio
 /// `{"code":1003,"message":"Argument length exceeds imposed limit"}`.
 fn format_query_datetime(dt: OffsetDateTime) -> Result<String> {
     let utc = dt.to_offset(time::UtcOffset::UTC);
-    let fmt = time::format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second]Z")
-        .map_err(|e| QuestradeError::DateTime {
-            context: "Failed to build datetime format".to_string(),
-            source: Box::new(e),
-        })?;
+    let fmt = time::format_description::parse_borrowed::<1>(
+        "[year]-[month]-[day]T[hour]:[minute]:[second]Z",
+    )
+    .map_err(|e| QuestradeError::DateTime {
+        context: "Failed to build datetime format".to_string(),
+        source: Box::new(e),
+    })?;
     utc.format(&fmt).map_err(|e| QuestradeError::DateTime {
         context: "Failed to format datetime for query parameter".to_string(),
         source: Box::new(e),
@@ -1284,6 +1286,6 @@ mod tests {
         let resp = reqwest::Response::from(resp);
         let delay = retry_after_or_backoff(&resp, 0);
         let ms = delay.as_millis() as u64;
-        assert!(ms >= 800 && ms <= 1200, "expected ~1000ms, got {}ms", ms);
+        assert!((800..=1200).contains(&ms), "expected ~1000ms, got {}ms", ms);
     }
 }
