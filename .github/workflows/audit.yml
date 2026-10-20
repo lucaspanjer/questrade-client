@@ -1,0 +1,28 @@
+name: Security audit
+
+on:
+  push:
+    branches: [main]
+    paths: ["**/Cargo.toml"]
+  pull_request:
+    paths: ["**/Cargo.toml"]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # Cargo.lock is not committed, so resolve fresh to audit what downstream users get.
+      - run: cargo generate-lockfile
+      - run: cargo audit

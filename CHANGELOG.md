@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Upgraded `rand` from 0.8 to 0.10
+- Narrowed `tokio` features for the library to `sync` and `time` (previously `full`), reducing the dependency footprint for downstream users
+
+### Internal
+
+- Added a weekly `cargo audit` workflow (also runs when `Cargo.toml` changes) and Dependabot config for cargo and GitHub Actions
+- Bumped `actions/checkout` to v5 and made the clippy job lint all targets
+
 ## [0.2.1] - 2026-05-11
 
 ### Added

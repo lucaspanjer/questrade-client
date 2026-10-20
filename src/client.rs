@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use rand::Rng;
+use rand::RngExt;
 use time::OffsetDateTime;
 use time::format_description::well_known::Iso8601;
 use tracing::{debug, error, trace, warn};
@@ -29,7 +29,7 @@ const RETRY_BASE_DELAY_MS: u64 = 1000;
 /// - attempt 2 → base ~4 s
 fn backoff_delay(attempt: u32) -> Duration {
     let base_ms = RETRY_BASE_DELAY_MS << attempt; // 1000, 2000, 4000 ms
-    let jitter_factor = rand::thread_rng().gen_range(0.8f64..=1.2f64);
+    let jitter_factor = rand::rng().random_range(0.8f64..=1.2f64);
     let delay_ms = (base_ms as f64 * jitter_factor) as u64;
     Duration::from_millis(delay_ms)
 }
