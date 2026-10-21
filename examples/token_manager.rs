@@ -22,7 +22,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use time::OffsetDateTime;
 
-use questrade_client::{CachedToken, OnTokenRefresh, QuestradeClient, TokenManager};
+use questrade_client::{CachedToken, QuestradeClient, TokenManager, TokenResponse, TokenStore};
 
 /// Directory where we store token files for this example.
 fn token_dir() -> PathBuf {
@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
 
     // On each token refresh, persist both the rotated refresh token and
     // the new access token so the next CLI invocation can reuse them.
-    let on_refresh: OnTokenRefresh = Arc::new(|token| {
+    let on_refresh: Arc<dyn TokenStore> = Arc::new(|token: &TokenResponse| {
         save_refresh_token(&token.refresh_token);
         let expires_at =
             OffsetDateTime::now_utc() + time::Duration::seconds(token.expires_in as i64 - 30);

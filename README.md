@@ -25,7 +25,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-questrade-client = "0.2.1"
+questrade-client = "0.3.0"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 ```
@@ -38,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
     let manager = TokenManager::new(
         "your_refresh_token".to_string(),
         false, // false = live account, true = practice account
-        None,  // optional token-refresh callback
+        None,  // optional token store for persisting rotated tokens
         None,  // optional cached token to skip initial refresh
     ).await?;
 
@@ -55,13 +55,13 @@ Questrade uses OAuth 2.0 with **single-use refresh tokens**. Every time you exch
 
 ### Token persistence
 
-Pass an `OnTokenRefresh` callback to `TokenManager::new` to persist the rotated token after every automatic refresh:
+Pass a `TokenStore` to `TokenManager::new` to persist the rotated token after every automatic refresh. Any `Fn(&TokenResponse)` closure works as a save-only store:
 
 ```rust
 use std::sync::Arc;
-use questrade_client::{OnTokenRefresh, TokenManager, CachedToken};
+use questrade_client::{TokenManager, TokenResponse, TokenStore};
 
-let on_refresh: OnTokenRefresh = Arc::new(|token| {
+let store: Arc<dyn TokenStore> = Arc::new(|token: &TokenResponse| {
     // Save token.refresh_token to disk, database, etc.
     // Also save token.access_token + token.api_server for caching
     std::fs::write("/tmp/refresh_token", &token.refresh_token).ok();
@@ -70,9 +70,34 @@ let on_refresh: OnTokenRefresh = Arc::new(|token| {
 let manager = TokenManager::new(
     refresh_token,
     false,
-    Some(on_refresh),
+    Some(store.clone()),
     None, // or pass a CachedToken to skip the initial refresh
 ).await?;
+```
+
+### Sharing one refresh token across processes
+
+If several processes (or several `TokenManager`s) use the same refresh token, implement the full `TokenStore` trait. Before each refresh the manager calls `lock()`, then `load()` to pick up a token another process may have just refreshed, and calls `save()` before releasing the lock, so only one holder ever spends a given refresh token:
+
+```rust
+use questrade_client::{StoredToken, TokenResponse, TokenStore};
+
+struct FileStore { /* paths */ }
+
+impl TokenStore for FileStore {
+    fn lock(&self) -> std::io::Result<Box<dyn Send>> {
+        // e.g. an exclusive flock on a lock file; dropping the guard unlocks
+        todo!()
+    }
+    fn load(&self) -> Option<StoredToken> {
+        // read the latest refresh token (and cached access token) from disk
+        todo!()
+    }
+    fn save(&self, token: &TokenResponse) {
+        // write token.refresh_token (and the access token) to disk
+        todo!()
+    }
+}
 ```
 
 To skip the OAuth round-trip on subsequent runs, pass a `CachedToken`:
@@ -87,7 +112,7 @@ let cached = CachedToken {
 let manager = TokenManager::new(
     refresh_token,
     false,
-    Some(on_refresh),
+    Some(store),
     Some(cached),
 ).await?;
 ```

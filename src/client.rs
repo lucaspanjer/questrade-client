@@ -289,7 +289,7 @@ impl QuestradeClient {
 
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED && !auth_retried {
                 warn!("received 401 Unauthorized, forcing token refresh and retrying");
-                self.token_manager.force_refresh().await?;
+                self.token_manager.refresh_rejected(&token).await?;
                 auth_retried = true;
                 continue;
             }
@@ -374,7 +374,7 @@ impl QuestradeClient {
 
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED && !auth_retried {
                 warn!("received 401 Unauthorized, forcing token refresh and retrying");
-                self.token_manager.force_refresh().await?;
+                self.token_manager.refresh_rejected(&token).await?;
                 auth_retried = true;
                 continue;
             }
@@ -453,7 +453,7 @@ impl QuestradeClient {
 
             if resp.status() == reqwest::StatusCode::UNAUTHORIZED && !auth_retried {
                 warn!("received 401 Unauthorized, forcing token refresh and retrying");
-                self.token_manager.force_refresh().await?;
+                self.token_manager.refresh_rejected(&token).await?;
                 auth_retried = true;
                 continue;
             }
