@@ -25,14 +25,12 @@ async fn mock_client(server: &MockServer) -> QuestradeClient {
         api_server,
         expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
     };
-    let tm = TokenManager::new_with_login_url(
-        "unused_refresh".to_string(),
-        None,
-        server.uri(),
-        Some(cached),
-    )
-    .await
-    .unwrap();
+    let tm = TokenManager::builder("unused_refresh")
+        .login_url(server.uri())
+        .cached(cached)
+        .build()
+        .await
+        .unwrap();
     QuestradeClient::new(tm).unwrap()
 }
 

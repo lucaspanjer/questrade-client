@@ -16,6 +16,16 @@ use clap::Parser;
 
 use questrade_client::{QuestradeClient, TokenManager, TokenResponse, TokenStore};
 
+/// Prints each rotated refresh token so it can be exported for the next run.
+struct PrintRotatedToken;
+
+impl TokenStore for PrintRotatedToken {
+    fn save(&self, token: &TokenResponse) {
+        eprintln!("--- Token rotated. Run this to update: ---");
+        eprintln!("export QUESTRADE_REFRESH_TOKEN={}", token.refresh_token);
+    }
+}
+
 /// Dump raw Questrade API responses to stdout for debugging.
 #[derive(Parser)]
 #[command(name = "dump_responses")]
@@ -51,12 +61,10 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let on_refresh: Arc<dyn TokenStore> = Arc::new(|token: &TokenResponse| {
-        eprintln!("--- Token rotated. Run this to update: ---");
-        eprintln!("export QUESTRADE_REFRESH_TOKEN={}", token.refresh_token);
-    });
-
-    let tm = TokenManager::new(args.refresh_token, args.practice, Some(on_refresh), None)
+    let tm = TokenManager::builder(args.refresh_token)
+        .practice(args.practice)
+        .store(Arc::new(PrintRotatedToken))
+        .build()
         .await
         .context("Failed to create token manager")?;
 

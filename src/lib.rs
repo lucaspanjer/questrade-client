@@ -10,12 +10,9 @@
 //!
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let manager = TokenManager::new(
-//!     "your_refresh_token".to_string(),
-//!     false, // false = live account, true = practice account
-//!     None,  // optional token store for persisting rotated tokens
-//!     None,  // optional cached token to skip initial refresh
-//! ).await?;
+//! // Live account; add `.practice(true)` for a practice account, `.store(...)`
+//! // to persist rotated tokens, `.cached(...)` to skip the initial refresh.
+//! let manager = TokenManager::builder("your_refresh_token").build().await?;
 //!
 //! let client = QuestradeClient::new(manager)?;
 //! let accounts = client.get_accounts().await?;
@@ -27,7 +24,7 @@
 //! ## Token persistence
 //!
 //! Questrade refresh tokens are **single-use**. Pass a [`TokenStore`] to
-//! [`TokenManager::new`] to persist the rotated token after every automatic
+//! [`TokenManagerBuilder::store`] to persist the rotated token after every automatic
 //! refresh so your next session can authenticate successfully. A store that
 //! also implements `lock` and `load` lets several processes share one
 //! refresh token without invalidating each other's.
@@ -40,6 +37,8 @@ pub mod client;
 pub mod error;
 pub(crate) mod rate_limit;
 
-pub use auth::{CachedToken, StoredToken, TokenManager, TokenResponse, TokenStore};
+pub use auth::{
+    CachedToken, StoredToken, TokenManager, TokenManagerBuilder, TokenResponse, TokenStore,
+};
 pub use client::{QuestradeClient, QuestradeClientBuilder};
 pub use error::{QuestradeError, Result};

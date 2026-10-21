@@ -961,14 +961,12 @@ mod tests {
             api_server: api_server.clone(),
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
-        let tm = TokenManager::new_with_login_url(
-            "old_rt".to_string(),
-            None,
-            server.uri(),
-            Some(cached),
-        )
-        .await
-        .unwrap();
+        let tm = TokenManager::builder("old_rt")
+            .login_url(server.uri())
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         let client = QuestradeClient::new(tm).unwrap();
         let time = client.get_server_time().await.unwrap();
@@ -1007,14 +1005,12 @@ mod tests {
             api_server,
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
-        let tm = TokenManager::new_with_login_url(
-            "old_rt".to_string(),
-            None,
-            server.uri(),
-            Some(cached),
-        )
-        .await
-        .unwrap();
+        let tm = TokenManager::builder("old_rt")
+            .login_url(server.uri())
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         let client = QuestradeClient::new(tm).unwrap();
         let result = client.get_server_time().await;
@@ -1072,14 +1068,12 @@ mod tests {
             api_server,
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
-        let tm = TokenManager::new_with_login_url(
-            "old_rt".to_string(),
-            None,
-            server.uri(),
-            Some(cached),
-        )
-        .await
-        .unwrap();
+        let tm = TokenManager::builder("old_rt")
+            .login_url(server.uri())
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         let client = QuestradeClient::new(tm).unwrap();
         let quotes = client.get_option_quotes_raw(&[12345]).await.unwrap();
@@ -1106,10 +1100,12 @@ mod tests {
             api_server,
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
-        let tm =
-            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(cached))
-                .await
-                .unwrap();
+        let tm = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         let client = QuestradeClient::new(tm).unwrap().with_raw_logging(true);
         let time = client.get_server_time().await.unwrap();
@@ -1134,10 +1130,12 @@ mod tests {
             api_server,
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
-        let tm =
-            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(cached))
-                .await
-                .unwrap();
+        let tm = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         let client = QuestradeClient::new(tm).unwrap();
         let text = client.get_text("/time").await.unwrap();
@@ -1176,10 +1174,12 @@ mod tests {
             api_server,
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
-        let tm =
-            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(cached))
-                .await
-                .unwrap();
+        let tm = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         let client = QuestradeClient::new(tm).unwrap();
         let time = client.get_server_time().await.unwrap();
@@ -1215,10 +1215,12 @@ mod tests {
             api_server,
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
-        let tm =
-            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(cached))
-                .await
-                .unwrap();
+        let tm = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         let client = QuestradeClient::new(tm).unwrap();
         let quotes = client.get_option_quotes_raw(&[12345]).await.unwrap();
@@ -1242,10 +1244,12 @@ mod tests {
             api_server,
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
-        let tm =
-            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(cached))
-                .await
-                .unwrap();
+        let tm = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         let client = QuestradeClient::new(tm).unwrap();
         let result = client.get_server_time().await;
