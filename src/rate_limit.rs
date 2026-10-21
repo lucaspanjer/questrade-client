@@ -10,6 +10,10 @@
 //! |-------------|-----------|----------|
 //! | Account     | 30        | 30,000   |
 //! | Market data | 20        | 15,000   |
+//!
+//! On 200 responses the headers carry the hourly counter. On a 429 they carry
+//! the per-second window instead (`Remaining: 0`, reset ~1 s away), so the
+//! proactive wait also covers per-second throttling once a 429 is seen.
 
 use std::sync::RwLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -19,9 +23,9 @@ use tracing::{debug, info};
 /// Which Questrade rate-limit bucket a request falls into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum RateLimitCategory {
-    /// `/time`, `/accounts/…` — 30 req/s, 30 000 req/hr.
+    /// `/time`, `/accounts/…`, `/symbols/…`, `/markets` — 30 req/s, 30 000 req/hr.
     Account,
-    /// `/symbols/…`, `/markets/…` — 20 req/s, 15 000 req/hr.
+    /// `/markets/quotes/…`, `/markets/candles/…` — 20 req/s, 15 000 req/hr.
     MarketData,
 }
 
@@ -62,14 +66,15 @@ impl RateLimiter {
 
     /// Classify an API path into a rate-limit category.
     ///
-    /// Questrade docs list `/symbols` under market data, but empirically the
-    /// API returns account-bucket remaining values (~30k) for `/symbols` calls
-    /// and market-data-bucket values (~15k) for `/markets` calls.
+    /// Questrade docs list `/symbols` and `/markets` under market data, but a
+    /// live probe (2026-10-21) showed both decrement the account counter (~30k).
+    /// Only the `/markets/…` sub-paths (quotes, candles) use the market-data
+    /// counter (~15k).
     pub(crate) fn classify(path: &str) -> RateLimitCategory {
-        if path.starts_with("/markets") {
+        if path.starts_with("/markets/") {
             RateLimitCategory::MarketData
         } else {
-            // /time, /accounts, /symbols, and anything else → account
+            // /time, /accounts, /symbols, /markets, and anything else → account
             RateLimitCategory::Account
         }
     }
@@ -211,6 +216,12 @@ mod tests {
             RateLimiter::classify("/symbols/12345/options"),
             RateLimitCategory::Account,
         );
+        // Docs list GET /markets under market data, but a live probe showed
+        // it decrements the account counter.
+        assert_eq!(
+            RateLimiter::classify("/markets"),
+            RateLimitCategory::Account
+        );
     }
 
     #[test]
@@ -228,7 +239,7 @@ mod tests {
             RateLimitCategory::MarketData,
         );
         assert_eq!(
-            RateLimiter::classify("/markets"),
+            RateLimiter::classify("/markets/quotes/strategies"),
             RateLimitCategory::MarketData,
         );
     }

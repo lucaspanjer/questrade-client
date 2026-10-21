@@ -142,17 +142,20 @@ The `get_activities` and `get_executions` methods automatically split date range
 A few behaviours differ from the [official documentation](https://www.questrade.com/api/documentation):
 
 - **Batch endpoints use query params, not path params.** The docs show `GET /v1/markets/quotes/:id` and `GET /v1/symbols/:id` for single IDs. For multiple IDs, the working form is `?ids=1,2,3` (e.g. `/v1/markets/quotes?ids=123,456`). Putting comma-separated IDs in the path returns HTTP 400.
-- **`/symbols` is rate-limited under the account bucket, not market data.** The docs list `/symbols` under the 20 req/s / 15k req/hr market data category, but `X-RateLimit-Remaining` headers empirically return account-bucket values (~30k ceiling) for `/symbols` calls and market-data values (~15k ceiling) for `/markets` calls.
-- **Rate limit headers only track the per-hour quota.** The docs specify both per-second (20–30 req/s) and per-hour (15k–30k req/hr) limits, but `X-RateLimit-Remaining` / `X-RateLimit-Reset` reflect only the hourly counter. The per-second limit is not surfaced in headers — you only learn about it from a 429 response. This means the proactive rate limiter only prevents hourly exhaustion; per-second bursts rely on the reactive 429 retry + backoff fallback.
+- **`/symbols` and `GET /markets` are rate-limited under the account bucket, not market data.** The docs list both under the 20 req/s / 15k req/hr market data category, but a live probe (2026-10-21) showed every `/symbols` call (search, `:id`, `?ids=`, `:id/options`) and `GET /v1/markets` decrement the account counter (~30k ceiling). Only the `/markets/…` sub-paths such as quotes and candles use the market-data counter (~15k ceiling).
+- **Rate limit headers switch windows on 429.** On successful responses, `X-RateLimit-Remaining` / `X-RateLimit-Reset` reflect the hourly counter. On a 429, they reflect the per-second window instead: `Remaining: 0` and a reset about 1 s away. No `Retry-After` header is sent. The per-second limits match the docs (20 req/s market data, 30 req/s account), and the hourly window is not aligned to the clock hour.
 
 ### Future: per-second rate limiting
 
-The current implementation has no per-second throttling. Under bursty workloads (e.g. a batch snapshot triggering 36 sequential fallback fetches), we can easily exceed 20 req/s for market data. To fix this, we should add a client-side token bucket or sliding window limiter (one per category) that caps outgoing requests to the documented per-second limits. This would sit alongside the existing hourly header-based limiter and fire before each request, independent of the 429 retry path.
+The client has no pre-emptive per-second throttling. A per-second 429 is handled by the header-based wait (about 1 s) and retried up to 3 times, but bursty or highly concurrent workloads can still exhaust those retries. A client-side token bucket per category, capped at the documented per-second limits, would avoid the 429s entirely.
+
+The [`rate_limit_probe`](examples/rate_limit_probe.rs) example re-checks these behaviours against the live API using read-only calls.
 
 ## Examples
 
 - **[`dump_responses`](examples/dump_responses.rs)** — dump raw API JSON to stdout for debugging
 - **[`token_manager`](examples/token_manager.rs)** — persist OAuth tokens across application runs
+- **[`rate_limit_probe`](examples/rate_limit_probe.rs)** — check live rate-limit buckets and headers with read-only calls
 
 ## License
 
