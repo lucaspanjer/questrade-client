@@ -27,7 +27,17 @@ use clap::Parser;
 use reqwest::header::HeaderMap;
 use tokio::task::JoinSet;
 
-use questrade_client::{OnTokenRefresh, TokenManager};
+use questrade_client::{TokenManager, TokenResponse, TokenStore};
+
+/// Prints each rotated refresh token so it can be saved for the next run.
+struct PrintRotatedToken;
+
+impl TokenStore for PrintRotatedToken {
+    fn save(&self, token: &TokenResponse) {
+        eprintln!("--- Token rotated. Save this before running again: ---");
+        eprintln!("export QUESTRADE_REFRESH_TOKEN={}", token.refresh_token);
+    }
+}
 
 /// Probe Questrade rate-limit headers and per-second behaviour.
 #[derive(Parser)]
@@ -219,12 +229,11 @@ async fn main() -> Result<()> {
             (token, base)
         }
         _ => {
-            let on_refresh: OnTokenRefresh = Arc::new(|token| {
-                eprintln!("--- Token rotated. Save this before running again: ---");
-                eprintln!("export QUESTRADE_REFRESH_TOKEN={}", token.refresh_token);
-            });
             let refresh_token = args.refresh_token.context("no refresh token")?;
-            let tm = TokenManager::new(refresh_token, args.practice, Some(on_refresh), None)
+            let tm = TokenManager::builder(refresh_token)
+                .practice(args.practice)
+                .store(Arc::new(PrintRotatedToken))
+                .build()
                 .await
                 .context("Failed to create token manager")?;
             tm.get_token().await?
