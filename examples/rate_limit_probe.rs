@@ -265,7 +265,7 @@ async fn main() -> Result<()> {
     print_sample(&s);
     let sequence: Vec<(&str, String)> = vec![
         ("time [account]", "/time".into()),
-        ("markets [market]", "/markets".into()),
+        ("markets", "/markets".into()),
         ("symbols/:id", format!("/symbols/{symbol_id}")),
         ("time [account]", "/time".into()),
         (
