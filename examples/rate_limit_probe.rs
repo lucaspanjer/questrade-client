@@ -9,7 +9,11 @@
 //! (well under 1% of either hourly budget) and may deliberately trigger a few
 //! 429s during the burst phase.
 //!
-//! Usage:
+//! Usage, with a still-valid access token (no refresh, nothing rotates):
+//!     QUESTRADE_ACCESS_TOKEN=xxx QUESTRADE_API_SERVER=https://api01.iq.questrade.com/ \
+//!         cargo run --example rate_limit_probe
+//!
+//! Or with a refresh token:
 //!     QUESTRADE_REFRESH_TOKEN=xxx cargo run --example rate_limit_probe
 //!
 //! The refresh token is single-use: the rotated token is printed to stderr,
@@ -30,8 +34,20 @@ use questrade_client::{OnTokenRefresh, TokenManager};
 #[command(name = "rate_limit_probe")]
 struct Args {
     /// Questrade OAuth refresh token. Falls back to QUESTRADE_REFRESH_TOKEN env var.
-    #[arg(long, env = "QUESTRADE_REFRESH_TOKEN")]
-    refresh_token: String,
+    #[arg(
+        long,
+        env = "QUESTRADE_REFRESH_TOKEN",
+        required_unless_present = "access_token"
+    )]
+    refresh_token: Option<String>,
+
+    /// Existing access token; skips the OAuth refresh so no token is rotated.
+    #[arg(long, env = "QUESTRADE_ACCESS_TOKEN", requires = "api_server")]
+    access_token: Option<String>,
+
+    /// API server returned alongside the access token.
+    #[arg(long, env = "QUESTRADE_API_SERVER")]
+    api_server: Option<String>,
 
     /// Use practice (sandbox) account instead of live.
     #[arg(long, default_value_t = false)]
@@ -195,14 +211,25 @@ fn summarize_burst(name: &str, samples: &[Sample], per_second_limit: u64) {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let on_refresh: OnTokenRefresh = Arc::new(|token| {
-        eprintln!("--- Token rotated. Save this before running again: ---");
-        eprintln!("export QUESTRADE_REFRESH_TOKEN={}", token.refresh_token);
-    });
-    let tm = TokenManager::new(args.refresh_token, args.practice, Some(on_refresh), None)
-        .await
-        .context("Failed to create token manager")?;
-    let (token, base) = tm.get_token().await?;
+    let (token, base) = match (args.access_token, args.api_server) {
+        (Some(token), Some(mut base)) => {
+            if !base.ends_with('/') {
+                base.push('/');
+            }
+            (token, base)
+        }
+        _ => {
+            let on_refresh: OnTokenRefresh = Arc::new(|token| {
+                eprintln!("--- Token rotated. Save this before running again: ---");
+                eprintln!("export QUESTRADE_REFRESH_TOKEN={}", token.refresh_token);
+            });
+            let refresh_token = args.refresh_token.context("no refresh token")?;
+            let tm = TokenManager::new(refresh_token, args.practice, Some(on_refresh), None)
+                .await
+                .context("Failed to create token manager")?;
+            tm.get_token().await?
+        }
+    };
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()?;
