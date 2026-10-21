@@ -13,7 +13,7 @@
 //! let manager = TokenManager::new(
 //!     "your_refresh_token".to_string(),
 //!     false, // false = live account, true = practice account
-//!     None,  // optional token-refresh callback
+//!     None,  // optional token store for persisting rotated tokens
 //!     None,  // optional cached token to skip initial refresh
 //! ).await?;
 //!
@@ -26,9 +26,11 @@
 //!
 //! ## Token persistence
 //!
-//! Questrade refresh tokens are **single-use**. Pass an [`OnTokenRefresh`]
-//! callback to [`TokenManager::new`] to persist the rotated token after every
-//! automatic refresh so your next session can authenticate successfully.
+//! Questrade refresh tokens are **single-use**. Pass a [`TokenStore`] to
+//! [`TokenManager::new`] to persist the rotated token after every automatic
+//! refresh so your next session can authenticate successfully. A store that
+//! also implements `lock` and `load` lets several processes share one
+//! refresh token without invalidating each other's.
 
 #![deny(missing_docs)]
 
@@ -38,6 +40,6 @@ pub mod client;
 pub mod error;
 pub(crate) mod rate_limit;
 
-pub use auth::{CachedToken, OnTokenRefresh, TokenManager, TokenResponse};
+pub use auth::{CachedToken, StoredToken, TokenManager, TokenResponse, TokenStore};
 pub use client::{QuestradeClient, QuestradeClientBuilder};
 pub use error::{QuestradeError, Result};

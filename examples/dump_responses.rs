@@ -14,7 +14,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 
-use questrade_client::{OnTokenRefresh, QuestradeClient, TokenManager};
+use questrade_client::{QuestradeClient, TokenManager, TokenResponse, TokenStore};
 
 /// Dump raw Questrade API responses to stdout for debugging.
 #[derive(Parser)]
@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let on_refresh: OnTokenRefresh = Arc::new(|token| {
+    let on_refresh: Arc<dyn TokenStore> = Arc::new(|token: &TokenResponse| {
         eprintln!("--- Token rotated. Run this to update: ---");
         eprintln!("export QUESTRADE_REFRESH_TOKEN={}", token.refresh_token);
     });

@@ -34,6 +34,11 @@ pub enum QuestradeError {
         body: String,
     },
 
+    /// The [`TokenStore`](crate::auth::TokenStore) lock could not be acquired,
+    /// or the token refresh task was cancelled.
+    #[error("Token store error: {0}")]
+    TokenStore(#[source] std::io::Error),
+
     /// Failed to deserialize a JSON response body.
     #[error("Failed to parse response: {0}")]
     Deserialization(#[from] serde_json::Error),
