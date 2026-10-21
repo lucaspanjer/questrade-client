@@ -7,10 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `rate_limit_probe` example that checks rate-limit buckets and header behaviour against the live API with read-only calls; can reuse an existing access token so no refresh token is rotated
+
 ### Changed
 
 - Upgraded `rand` from 0.8 to 0.10
 - Narrowed `tokio` features for the library to `sync` and `time` (previously `full`), reducing the dependency footprint for downstream users
+
+### Fixed
+
+- `GET /markets` is now classified under the account rate-limit bucket; a live probe showed it decrements the account counter, not market data (only `/markets/…` sub-paths such as quotes and candles use the market-data bucket)
+
+### Documentation
+
+- README API variances corrected: rate-limit headers carry the hourly counter on success but the per-second window on 429, no `Retry-After` is sent, and `GET /markets` uses the account bucket
 
 ### Internal
 

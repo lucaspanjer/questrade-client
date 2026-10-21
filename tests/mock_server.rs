@@ -739,10 +739,10 @@ async fn rate_limit_categories_are_independent() {
 
     // Market data endpoint: unaffected, remaining is healthy.
     Mock::given(method("GET"))
-        .and(path("/v1/markets"))
+        .and(path("/v1/markets/quotes/8049"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_string(fixture("markets.json"))
+                .set_body_string(fixture("quotes.json"))
                 .insert_header("X-RateLimit-Remaining", "19")
                 .insert_header("X-RateLimit-Reset", &reset_epoch.to_string()),
         )
@@ -757,10 +757,10 @@ async fn rate_limit_categories_are_independent() {
 
     // Market data should still be fast (no proactive wait).
     let start = Instant::now();
-    let markets = client.get_markets().await.unwrap();
+    let quote = client.get_raw_quote(8049).await.unwrap();
     let elapsed = start.elapsed();
 
-    assert!(!markets.is_empty());
+    assert_eq!(quote.symbol_id, 8049);
     assert!(
         elapsed.as_millis() < 500,
         "market data should not be blocked by account rate limit, took {:?}",
