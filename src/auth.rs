@@ -26,7 +26,7 @@ pub struct TokenResponse {
     pub api_server: String,
 }
 
-/// Pre-existing token state that can be passed to [`TokenManager::new`] to
+/// Pre-existing token state that can be passed to [`TokenManagerBuilder::cached`] to
 /// skip the initial token refresh when a valid cached token is available.
 #[derive(Debug, Clone)]
 pub struct CachedToken {
@@ -64,21 +64,24 @@ pub struct StoredToken {
 /// `load` and `save` should be quick (e.g. a small file read/write). None of
 /// them may call back into the [`TokenManager`].
 ///
-/// Any `Fn(&TokenResponse)` closure is a save-only store:
+/// A store that only implements `save` behaves like a persistence callback:
 ///
 /// ```no_run
 /// # use std::sync::Arc;
-/// # use questrade_client::{TokenManager, TokenResponse};
-/// # async fn example() -> questrade_client::Result<()> {
-/// let manager = TokenManager::new(
-///     "refresh_token".to_string(),
-///     false,
-///     Some(Arc::new(|token: &TokenResponse| {
+/// # use questrade_client::{TokenManager, TokenResponse, TokenStore};
+/// struct SaveToFile;
+///
+/// impl TokenStore for SaveToFile {
+///     fn save(&self, token: &TokenResponse) {
 ///         std::fs::write("/tmp/refresh_token", &token.refresh_token).ok();
-///     })),
-///     None,
-/// )
-/// .await?;
+///     }
+/// }
+///
+/// # async fn example() -> questrade_client::Result<()> {
+/// let manager = TokenManager::builder("refresh_token")
+///     .store(Arc::new(SaveToFile))
+///     .build()
+///     .await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -99,15 +102,6 @@ pub trait TokenStore: Send + Sync + 'static {
     /// Persist a freshly refreshed token. The new `refresh_token` **must** be
     /// saved; the previous one is no longer valid.
     fn save(&self, token: &TokenResponse);
-}
-
-impl<F> TokenStore for F
-where
-    F: Fn(&TokenResponse) + Send + Sync + 'static,
-{
-    fn save(&self, token: &TokenResponse) {
-        self(token)
-    }
 }
 
 /// Store used when none is given: nothing is persisted.
@@ -138,56 +132,73 @@ fn usable(token: &str, expires_at: OffsetDateTime, rejected: Option<&str>) -> bo
     !token.is_empty() && OffsetDateTime::now_utc() < expires_at && rejected != Some(token)
 }
 
-impl TokenManager {
-    /// Create a new TokenManager with the given refresh token.
-    ///
-    /// `store` persists rotated tokens and, optionally, coordinates refreshes
-    /// with other holders of the same refresh token (see [`TokenStore`]).
-    /// Pass `None` to keep tokens in memory only (e.g. in tests).
-    ///
-    /// If `cached_token` is provided and still valid, the initial token refresh
-    /// is skipped and the cached credentials are used directly.
-    pub async fn new(
-        refresh_token: String,
-        practice: bool,
-        store: Option<Arc<dyn TokenStore>>,
-        cached_token: Option<CachedToken>,
-    ) -> Result<Self> {
-        let login_url = if practice {
-            "https://practicelogin.questrade.com".to_string()
+const LIVE_LOGIN_URL: &str = "https://login.questrade.com";
+const PRACTICE_LOGIN_URL: &str = "https://practicelogin.questrade.com";
+
+/// Builder for [`TokenManager`], created by [`TokenManager::builder`].
+pub struct TokenManagerBuilder {
+    refresh_token: String,
+    login_url: String,
+    store: Option<Arc<dyn TokenStore>>,
+    cached: Option<CachedToken>,
+}
+
+impl TokenManagerBuilder {
+    /// Use the practice-account login server instead of the live one.
+    pub fn practice(mut self, practice: bool) -> Self {
+        self.login_url = if practice {
+            PRACTICE_LOGIN_URL
         } else {
-            "https://login.questrade.com".to_string()
-        };
-        Self::new_with_login_url(refresh_token, store, login_url, cached_token).await
+            LIVE_LOGIN_URL
+        }
+        .to_string();
+        self
     }
 
-    /// Like [`Self::new`] but accepts an explicit login URL.
-    /// Used internally and in tests (e.g. to point at a wiremock server).
-    pub async fn new_with_login_url(
-        refresh_token: String,
-        store: Option<Arc<dyn TokenStore>>,
-        login_url: String,
-        cached_token: Option<CachedToken>,
-    ) -> Result<Self> {
-        let store: Arc<dyn TokenStore> = store.unwrap_or_else(|| Arc::new(NoStore));
+    /// Use an explicit login server URL (e.g. a wiremock server in tests).
+    pub fn login_url(mut self, login_url: impl Into<String>) -> Self {
+        self.login_url = login_url.into();
+        self
+    }
+
+    /// Persist rotated tokens and coordinate refreshes through `store`
+    /// (see [`TokenStore`]). Without one, tokens are kept in memory only.
+    pub fn store(mut self, store: Arc<dyn TokenStore>) -> Self {
+        self.store = Some(store);
+        self
+    }
+
+    /// Start from a previously issued access token, if any. If it is still
+    /// valid the initial refresh is skipped.
+    pub fn cached(mut self, cached: impl Into<Option<CachedToken>>) -> Self {
+        self.cached = cached.into();
+        self
+    }
+
+    /// Build the manager, refreshing once unless a valid cached access token
+    /// was given (or the store holds one).
+    pub async fn build(self) -> Result<TokenManager> {
+        let store: Arc<dyn TokenStore> = self.store.unwrap_or_else(|| Arc::new(NoStore));
 
         // Use cached token if provided and still valid, otherwise start expired.
-        let (access_token, api_server, expires_at) =
-            if let Some(ct) = cached_token.filter(|ct| OffsetDateTime::now_utc() < ct.expires_at) {
-                info!("reusing cached Questrade access token");
-                (ct.access_token, ct.api_server, ct.expires_at)
-            } else {
-                (String::new(), String::new(), OffsetDateTime::UNIX_EPOCH)
-            };
+        let (access_token, api_server, expires_at) = if let Some(ct) = self
+            .cached
+            .filter(|ct| OffsetDateTime::now_utc() < ct.expires_at)
+        {
+            info!("reusing cached Questrade access token");
+            (ct.access_token, ct.api_server, ct.expires_at)
+        } else {
+            (String::new(), String::new(), OffsetDateTime::UNIX_EPOCH)
+        };
 
-        let manager = Self {
+        let manager = TokenManager {
             inner: Arc::new(RwLock::new(TokenState {
                 access_token,
                 api_server,
-                refresh_token,
+                refresh_token: self.refresh_token,
                 expires_at,
             })),
-            login_url,
+            login_url: self.login_url,
             store,
         };
 
@@ -197,6 +208,22 @@ impl TokenManager {
         }
 
         Ok(manager)
+    }
+}
+
+impl TokenManager {
+    /// Start building a [`TokenManager`] from a Questrade refresh token.
+    ///
+    /// With no other options it targets the live login server, keeps tokens
+    /// in memory only, and performs the initial refresh in
+    /// [`TokenManagerBuilder::build`].
+    pub fn builder(refresh_token: impl Into<String>) -> TokenManagerBuilder {
+        TokenManagerBuilder {
+            refresh_token: refresh_token.into(),
+            login_url: LIVE_LOGIN_URL.to_string(),
+            store: None,
+            cached: None,
+        }
     }
 
     /// Get a valid access token and API server URL, refreshing if needed.
@@ -345,7 +372,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn closure_store_saves_new_token_on_refresh() {
+    async fn store_saves_new_token_on_refresh() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/oauth2/token"))
@@ -355,17 +382,22 @@ mod tests {
             .mount(&server)
             .await;
 
-        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(vec![]));
-        let seen_clone = seen.clone();
-        let store: Arc<dyn TokenStore> = Arc::new(move |t: &TokenResponse| {
-            seen_clone.lock().unwrap().push(t.refresh_token.clone());
-        });
+        struct Recorder(Mutex<Vec<String>>);
+        impl TokenStore for Recorder {
+            fn save(&self, t: &TokenResponse) {
+                self.0.lock().unwrap().push(t.refresh_token.clone());
+            }
+        }
+        let seen = Arc::new(Recorder(Mutex::new(vec![])));
 
-        TokenManager::new_with_login_url("seed_token".to_string(), Some(store), server.uri(), None)
+        TokenManager::builder("seed_token")
+            .login_url(server.uri())
+            .store(seen.clone())
+            .build()
             .await
             .unwrap();
 
-        assert_eq!(*seen.lock().unwrap(), vec!["rotated"]);
+        assert_eq!(*seen.0.lock().unwrap(), vec!["rotated"]);
     }
 
     #[tokio::test]
@@ -382,14 +414,15 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result =
-            TokenManager::new_with_login_url(tricky_token.to_string(), None, server.uri(), None)
-                .await;
+        let result = TokenManager::builder(tricky_token)
+            .login_url(server.uri())
+            .build()
+            .await;
         assert!(result.is_ok(), "token with reserved chars should succeed");
     }
 
     #[tokio::test]
-    async fn no_callback_constructs_successfully() {
+    async fn no_store_constructs_successfully() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/oauth2/token"))
@@ -397,8 +430,10 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result =
-            TokenManager::new_with_login_url("any".to_string(), None, server.uri(), None).await;
+        let result = TokenManager::builder("any")
+            .login_url(server.uri())
+            .build()
+            .await;
         assert!(result.is_ok());
     }
 
@@ -412,14 +447,12 @@ mod tests {
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
 
-        let manager = TokenManager::new_with_login_url(
-            "unused_refresh".to_string(),
-            None,
-            "http://127.0.0.1:1".to_string(), // unreachable — proves no refresh happens
-            Some(cached),
-        )
-        .await
-        .unwrap();
+        let manager = TokenManager::builder("unused_refresh")
+            .login_url("http://127.0.0.1:1") // unreachable — proves no refresh happens
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         let (token, server) = manager.get_token().await.unwrap();
         assert_eq!(token, "cached_acc");
@@ -442,10 +475,12 @@ mod tests {
             expires_at: OffsetDateTime::now_utc() - time::Duration::seconds(1),
         };
 
-        let manager =
-            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(expired))
-                .await
-                .unwrap();
+        let manager = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .cached(expired)
+            .build()
+            .await
+            .unwrap();
 
         let (token, _) = manager.get_token().await.unwrap();
         assert_eq!(token, "acc_123");
@@ -468,10 +503,12 @@ mod tests {
             expires_at: OffsetDateTime::now_utc() + time::Duration::minutes(25),
         };
 
-        let manager =
-            TokenManager::new_with_login_url("rt".to_string(), None, server.uri(), Some(cached))
-                .await
-                .unwrap();
+        let manager = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .cached(cached)
+            .build()
+            .await
+            .unwrap();
 
         // Confirm cached token is being used.
         let (token, _) = manager.get_token().await.unwrap();
@@ -547,14 +584,12 @@ mod tests {
             cached: None,
         });
 
-        TokenManager::new_with_login_url(
-            "stale_in_memory".to_string(),
-            Some(store.clone()),
-            server.uri(),
-            None,
-        )
-        .await
-        .unwrap();
+        TokenManager::builder("stale_in_memory")
+            .login_url(server.uri())
+            .store(store.clone())
+            .build()
+            .await
+            .unwrap();
 
         let stored = store.load().unwrap();
         assert_eq!(stored.refresh_token, "rotated");
@@ -570,14 +605,13 @@ mod tests {
             cached: Some(valid_cached("fresh_from_other_process")),
         });
 
-        let manager = TokenManager::new_with_login_url(
-            "rt".to_string(),
-            Some(store),
-            "http://127.0.0.1:1".to_string(), // unreachable — proves no refresh happens
-            Some(valid_cached("revoked")),
-        )
-        .await
-        .unwrap();
+        let manager = TokenManager::builder("rt")
+            .login_url("http://127.0.0.1:1") // unreachable — proves no refresh happens
+            .store(store)
+            .cached(valid_cached("revoked"))
+            .build()
+            .await
+            .unwrap();
 
         let (token, _) = manager.force_refresh().await.unwrap();
         assert_eq!(token, "fresh_from_other_process");
@@ -600,14 +634,13 @@ mod tests {
             cached: Some(valid_cached("revoked")),
         });
 
-        let manager = TokenManager::new_with_login_url(
-            "rt".to_string(),
-            Some(store),
-            server.uri(),
-            Some(valid_cached("revoked")),
-        )
-        .await
-        .unwrap();
+        let manager = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .store(store)
+            .cached(valid_cached("revoked"))
+            .build()
+            .await
+            .unwrap();
 
         let (token, _) = manager.refresh_rejected("revoked").await.unwrap();
         assert_eq!(token, "acc_123");
@@ -623,14 +656,12 @@ mod tests {
             .mount(&server)
             .await;
 
-        let manager = TokenManager::new_with_login_url(
-            "rt".to_string(),
-            None,
-            server.uri(),
-            Some(valid_cached("revoked")),
-        )
-        .await
-        .unwrap();
+        let manager = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .cached(valid_cached("revoked"))
+            .build()
+            .await
+            .unwrap();
 
         let handles: Vec<_> = (0..5)
             .map(|_| {
@@ -658,14 +689,13 @@ mod tests {
             .await;
 
         let store = Arc::new(SharedStore::default());
-        let manager = TokenManager::new_with_login_url(
-            "rt".to_string(),
-            Some(store.clone()),
-            server.uri(),
-            Some(valid_cached("revoked")),
-        )
-        .await
-        .unwrap();
+        let manager = TokenManager::builder("rt")
+            .login_url(server.uri())
+            .store(store.clone())
+            .cached(valid_cached("revoked"))
+            .build()
+            .await
+            .unwrap();
 
         // Caller gives up before the auth server answers.
         let timed_out = tokio::time::timeout(

@@ -24,6 +24,19 @@ use time::OffsetDateTime;
 
 use questrade_client::{CachedToken, QuestradeClient, TokenManager, TokenResponse, TokenStore};
 
+/// On each token refresh, persist both the rotated refresh token and the new
+/// access token so the next CLI invocation can reuse them.
+struct ExampleStore;
+
+impl TokenStore for ExampleStore {
+    fn save(&self, token: &TokenResponse) {
+        save_refresh_token(&token.refresh_token);
+        let expires_at =
+            OffsetDateTime::now_utc() + time::Duration::seconds(token.expires_in as i64 - 30);
+        save_access_token(&token.access_token, &token.api_server, expires_at);
+    }
+}
+
 /// Directory where we store token files for this example.
 fn token_dir() -> PathBuf {
     let dir = std::env::temp_dir().join("questrade-example");
@@ -100,22 +113,18 @@ async fn main() -> Result<()> {
         .or_else(load_refresh_token)
         .context("No refresh token. Pass --refresh-token or run once to persist one.")?;
 
-    // On each token refresh, persist both the rotated refresh token and
-    // the new access token so the next CLI invocation can reuse them.
-    let on_refresh: Arc<dyn TokenStore> = Arc::new(|token: &TokenResponse| {
-        save_refresh_token(&token.refresh_token);
-        let expires_at =
-            OffsetDateTime::now_utc() + time::Duration::seconds(token.expires_in as i64 - 30);
-        save_access_token(&token.access_token, &token.api_server, expires_at);
-    });
-
     // If we have a cached access token, pass it to skip the initial OAuth call.
     let cached = load_cached_token();
     if cached.is_some() {
         eprintln!("Found cached access token — will skip OAuth refresh if still valid.");
     }
 
-    let tm = TokenManager::new(refresh_token, args.practice, Some(on_refresh), cached).await?;
+    let tm = TokenManager::builder(refresh_token)
+        .practice(args.practice)
+        .store(Arc::new(ExampleStore))
+        .cached(cached)
+        .build()
+        .await?;
     let client = QuestradeClient::new(tm)?;
 
     // Make a couple API calls to prove it works.

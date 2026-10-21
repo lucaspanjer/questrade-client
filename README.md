@@ -35,12 +35,8 @@ use questrade_client::{TokenManager, QuestradeClient};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let manager = TokenManager::new(
-        "your_refresh_token".to_string(),
-        false, // false = live account, true = practice account
-        None,  // optional token store for persisting rotated tokens
-        None,  // optional cached token to skip initial refresh
-    ).await?;
+    // Live account; add `.practice(true)` for a practice account.
+    let manager = TokenManager::builder("your_refresh_token").build().await?;
 
     let client = QuestradeClient::new(manager)?;
     let accounts = client.get_accounts().await?;
@@ -55,24 +51,26 @@ Questrade uses OAuth 2.0 with **single-use refresh tokens**. Every time you exch
 
 ### Token persistence
 
-Pass a `TokenStore` to `TokenManager::new` to persist the rotated token after every automatic refresh. Any `Fn(&TokenResponse)` closure works as a save-only store:
+Pass a `TokenStore` to the builder to persist the rotated token after every automatic refresh. A store that only implements `save` is enough for a single process:
 
 ```rust
 use std::sync::Arc;
 use questrade_client::{TokenManager, TokenResponse, TokenStore};
 
-let store: Arc<dyn TokenStore> = Arc::new(|token: &TokenResponse| {
-    // Save token.refresh_token to disk, database, etc.
-    // Also save token.access_token + token.api_server for caching
-    std::fs::write("/tmp/refresh_token", &token.refresh_token).ok();
-});
+struct SaveToFile;
 
-let manager = TokenManager::new(
-    refresh_token,
-    false,
-    Some(store.clone()),
-    None, // or pass a CachedToken to skip the initial refresh
-).await?;
+impl TokenStore for SaveToFile {
+    fn save(&self, token: &TokenResponse) {
+        // Save token.refresh_token to disk, database, etc.
+        // Also save token.access_token + token.api_server for caching
+        std::fs::write("/tmp/refresh_token", &token.refresh_token).ok();
+    }
+}
+
+let manager = TokenManager::builder(refresh_token)
+    .store(Arc::new(SaveToFile))
+    .build()
+    .await?;
 ```
 
 ### Sharing one refresh token across processes
@@ -109,12 +107,11 @@ let cached = CachedToken {
     expires_at: saved_expiry,
 };
 
-let manager = TokenManager::new(
-    refresh_token,
-    false,
-    Some(store),
-    Some(cached),
-).await?;
+let manager = TokenManager::builder(refresh_token)
+    .store(Arc::new(SaveToFile))
+    .cached(cached)
+    .build()
+    .await?;
 ```
 
 See the [`token_manager` example](examples/token_manager.rs) for a complete working implementation.
@@ -123,7 +120,7 @@ See the [`token_manager` example](examples/token_manager.rs) for a complete work
 
 | Category | Method | Questrade endpoint |
 |---|---|---|
-| **Auth** | `TokenManager::new` | `GET /oauth2/token` |
+| **Auth** | `TokenManager::builder(..).build()` | `GET /oauth2/token` |
 | **Server** | `get_server_time` | `GET /v1/time` |
 | **Markets** | `get_markets` | `GET /v1/markets` |
 | **Symbols** | `resolve_symbol` | `GET /v1/symbols/search` |

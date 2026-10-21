@@ -12,10 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rate_limit_probe` example that checks rate-limit buckets and header behaviour against the live API with read-only calls; can reuse an existing access token so no refresh token is rotated
 - `TokenStore` trait for persisting tokens. Besides `save`, a store can implement `lock` and `load` so several processes sharing one refresh token coordinate refreshes instead of invalidating each other's token
 - `StoredToken` (returned by `TokenStore::load`) and the `QuestradeError::TokenStore` variant
+- `TokenManager::builder` with `practice`, `login_url`, `store` and `cached` options
 
 ### Changed
 
-- **Breaking:** `TokenManager::new` and `new_with_login_url` take `Option<Arc<dyn TokenStore>>` instead of `Option<OnTokenRefresh>`; the `OnTokenRefresh` type is removed. Any `Fn(&TokenResponse)` closure is a `TokenStore`, so existing callbacks only need to take the token by reference
+- **Breaking:** `TokenManager::new` and `new_with_login_url` are replaced by `TokenManager::builder(..).build()`, and the `OnTokenRefresh` callback is replaced by `TokenStore`. To migrate a callback, implement `TokenStore::save` on a type and pass it with `.store(Arc::new(..))`
 - Concurrent requests that get 401 with the same access token now trigger a single refresh instead of one each
 - A token refresh now runs on its own task, so dropping the caller's future (a timeout, a disconnected client) no longer loses a refresh token Questrade has already rotated
 - The library now needs tokio's `rt` feature
