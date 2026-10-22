@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-22
+
 ### Added
 
 - `rate_limit_probe` example that checks rate-limit buckets and header behaviour against the live API with read-only calls; can reuse an existing access token so no refresh token is rotated
@@ -34,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - Added a weekly `cargo audit` workflow (also runs when `Cargo.toml` changes) and Dependabot config for cargo and GitHub Actions
-- Bumped `actions/checkout` to v5 and made the clippy job lint all targets
+- Bumped `actions/checkout` to v7 and made the clippy job lint all targets
 
 ## [0.2.1] - 2026-05-11
 
