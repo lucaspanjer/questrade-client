@@ -181,4 +181,4 @@ The [`rate_limit_probe`](examples/rate_limit_probe.rs) example re-checks these b
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+[MIT LICENSE](LICENSE).
